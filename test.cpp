@@ -79,6 +79,7 @@ std::vector<Eigen::Matrix3d> ComputeNullspaceEssentialCandidates(const Eigen::Ma
     // Last 4 columns of V form the 4D null space of A
     for (int i = 5; i < 9; ++i) {
       Eigen::VectorXd e = V.col(i);  // 9x1
+      std::cout << "e: " << e.transpose() << std::endl;
       Eigen::Matrix3d E;
       E << e(0), e(1), e(2),
            e(3), e(4), e(5),
@@ -515,8 +516,6 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
       std::cerr << "Warning: n_row(0) is too close to zero. Skipping normalization.\n";
       n_row_scaled = n_row;  // or set to zero, or handle differently
     }
-
-    std::cout << "n_row: \n" << n_row_scaled << std::endl;
     std::vector<std::complex<double>> all_roots = ComputeRootsFromPolynomial(n_row_scaled);
     const std::vector<Eigen::Matrix3d> essential_matrices = EssentialMatricesFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y, essential_z, essential_w);
     for(const auto& essential_matrix : essential_matrices) {
@@ -552,38 +551,43 @@ std::vector<cv::Point2d> NormalizePoints(const std::vector<cv::Point2d>& image_p
 
 int main() {
   const Mat k = (Mat_<double>(3, 3) << 
-    800, 0, 320,
-    0, 800, 240,
-    0, 0, 1);
+    602.5277,0,177.3328,
+    0,562.9129,102.8893,
+    0,0,1.0000);
 
-  const double theta = 10 * CV_PI / 180.0;
-  const Mat r = (Mat_<double>(3, 3) <<
-    cos(theta), -sin(theta), 0,
-    sin(theta),  cos(theta), 0,
-    0, 0, 1);
+  // Input points from MATLAB (each column is a point)
+  double pts1_data[2][5] = {
+    {288.8398, 12.1534, 317.0, 74.5754, 44.1327},
+    {77.2382, 163.7803, 82.8476, 220.5643, 192.9634}
+  };
 
-  const Mat t = (Mat_<double>(3, 1) << 0.1, 0, 0);
+  double pts2_data[2][5] = {
+    {286.1892, 6.9846, 312.5673, 70.0283, 40.2131},
+    {76.7289, 164.3921, 81.3119, 220.4840, 194.1166}
+  };
 
-  const auto points_3d = Generate3DPoints(10);
+  std::vector<cv::Point2d> pts1, pts2;
 
-  const auto points_cam1 = ProjectPoints(points_3d, k, Mat::eye(3, 3, CV_64F),
-                                         Mat::zeros(3, 1, CV_64F));
-  const auto points_cam1_normalized = NormalizePoints(points_cam1, k);
-  const auto points_cam2 = ProjectPoints(points_3d, k, r, t);
-  const auto points_cam2_normalized = NormalizePoints(points_cam2, k);
+  for (int i = 0; i < 5; ++i) {
+    pts1.emplace_back(pts1_data[0][i], pts1_data[1][i]);
+    pts2.emplace_back(pts2_data[0][i], pts2_data[1][i]);
+  }
+
+  const auto points_cam1_normalized = NormalizePoints(pts1, k);
+  const auto points_cam2_normalized = NormalizePoints(pts2, k);
 
   FindEssentialMatMinimalSolver(points_cam1_normalized, points_cam2_normalized);
-  Mat e_est = findEssentialMat(points_cam1_normalized, points_cam2_normalized, 1.0, cv::Point2d(0,0), cv::RANSAC, 0.999, 1.0);
+//   Mat e_est = findEssentialMat(points_cam1_normalized, points_cam2_normalized, 1.0, cv::Point2d(0,0), cv::RANSAC, 0.999, 1.0);
 
-  Mat e_gt = Skew(t) * r;
-  e_gt /= cv::norm(e_gt);
-  e_est /= cv::norm(e_est);
+//   Mat e_gt = Skew(t) * r;
+//   e_gt /= cv::norm(e_gt);
+//   e_est /= cv::norm(e_est);
 
-  cout << "Estimated Essential Matrix:\n" << e_est << endl;
-  cout << "Ground Truth Essential Matrix:\n" << e_gt << endl;
+//   cout << "Estimated Essential Matrix:\n" << e_est << endl;
+//   cout << "Ground Truth Essential Matrix:\n" << e_gt << endl;
 
-  double frobenius_error = cv::norm(e_est - e_gt);
-  cout << "Frobenius Error: " << frobenius_error << endl;
+//   double frobenius_error = cv::norm(e_est - e_gt);
+//   cout << "Frobenius Error: " << frobenius_error << endl;
 
   return 0;
 }
