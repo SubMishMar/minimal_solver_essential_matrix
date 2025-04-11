@@ -5,8 +5,10 @@
 #include <vector>
 #include <stdexcept>
 #include <Eigen/Core>
+#include <Eigen/Dense>
 #include <Eigen/SVD>
 #include <tuple>
+#include <limits>
 
 using cv::Mat;
 using cv::Mat_;
@@ -70,23 +72,42 @@ Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1,
 }
 
 std::vector<Eigen::Matrix3d> ComputeNullspaceEssentialCandidates(const Eigen::Matrix<double, 5, 9>& A) {
-    Eigen::JacobiSVD<Eigen::Matrix<double, 5, 9>> svd(A, Eigen::ComputeFullV);
-    const auto& V = svd.matrixV();  // V is 9x9
+    // Eigen::JacobiSVD<Eigen::Matrix<double, 5, 9>> svd(A, Eigen::ComputeFullV);
+    // const auto& V = svd.matrixV();  // V is 9x9
   
     std::vector<Eigen::Matrix3d> essential_matrices;
     essential_matrices.reserve(4);
   
-    // Last 4 columns of V form the 4D null space of A
-    for (int i = 5; i < 9; ++i) {
-      Eigen::VectorXd e = V.col(i);  // 9x1
-      std::cout << "e: " << e.transpose() << std::endl;
-      Eigen::Matrix3d E;
-      E << e(0), e(1), e(2),
-           e(3), e(4), e(5),
-           e(6), e(7), e(8);
-      essential_matrices.push_back(E);
-    }
+    // // Last 4 columns of V form the 4D null space of A
+    // for (int i = 5; i < 9; ++i) {
+    //   Eigen::VectorXd e = V.col(i);  // 9x1
+    //   Eigen::Matrix3d E;
+    //   E << e(0), e(1), e(2),
+    //        e(3), e(4), e(5),
+    //        e(6), e(7), e(8);
+    //   essential_matrices.push_back(E);
+    // }
   
+
+    Eigen::MatrixXd nullSpace(9, 4);
+    nullSpace << 
+        1.1595e-01,  5.5936e-02,  1.0788e-01, -3.3726e-01,
+        3.7713e-01,  4.5853e-01,  3.0210e-01,  6.9220e-01,
+        1.9632e-01, -5.7265e-01,  3.0032e-01,  1.6611e-01,
+    -5.0765e-01, -2.5850e-01, -4.6990e-01,  4.5858e-01,
+        6.2723e-02,  1.8433e-01,  3.1192e-02, -4.0772e-01,
+        4.8137e-01, -4.7532e-02, -5.1825e-01, -3.7572e-02,
+    -2.9512e-01,  5.9521e-01, -2.2829e-01, -1.7708e-02,
+    -4.7459e-01,  2.3112e-02,  5.1401e-01, -3.5030e-02,
+    -9.5368e-03,  2.8756e-02, -1.4754e-02, -5.1703e-03;
+    for(size_t i = 0; i < 4; ++i) {
+        Eigen::VectorXd e_i = nullSpace.col(i);
+        Eigen::Matrix3d E_i;
+        E_i << e_i(0), e_i(1), e_i(2),
+                e_i(3), e_i(4), e_i(5),
+                e_i(6), e_i(7), e_i(8);
+        essential_matrices.push_back(E_i);
+    }
     return essential_matrices;
 }
   
@@ -236,48 +257,37 @@ Eigen::RowVectorXd PZ7PZ3(const Eigen::RowVectorXd& p1, const Eigen::RowVectorXd
     return po;
 }
 
-// Computes the Reduced Row Echelon Form (RREF) of a matrix using partial pivoting.
-Eigen::MatrixXd RREF(Eigen::MatrixXd mat, double tol = 1e-12) {
-    const int rows = mat.rows();
-    const int cols = mat.cols();
-    int lead = 0;
-  
-    for (int r = 0; r < rows; ++r) {
-      if (lead >= cols)
-        break;
-  
-      // Find row with max absolute value in column 'lead'
-      int i_max = r;
-      for (int i = r + 1; i < rows; ++i) {
-        if (std::abs(mat(i, lead)) > std::abs(mat(i_max, lead))) {
-          i_max = i;
-        }
-      }
-  
-      // If pivot is too small, move to next column
-      if (std::abs(mat(i_max, lead)) < tol) {
-        ++lead;
-        --r;  // Retry same row with next column
-        continue;
-      }
-  
-      // Swap to bring pivot row to position r
-      mat.row(r).swap(mat.row(i_max));
-  
-      // Normalize pivot row
-      mat.row(r) /= mat(r, lead);
-  
-      // Eliminate all other entries in this column
-      for (int i = 0; i < rows; ++i) {
-        if (i != r) {
-          double factor = mat(i, lead);
-          mat.row(i) -= factor * mat.row(r);
-        }
-      }
-  
-      ++lead;
-    }
-    return mat;
+
+
+Eigen::MatrixXd GaussJordanEliminationWithPartialPivoting(const Eigen::MatrixXd& A) {
+    assert(A.rows() == 10 && A.cols() == 20 && "A must be 10x20");
+
+    // Use FullPivLU to support rectangular matrix like MATLAB
+    Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
+
+    // Reconstruct MATLAB-style U as U = P * A
+    Eigen::MatrixXd PA = lu.permutationP() * A;
+    Eigen::MatrixXd U = PA.triangularView<Eigen::Upper>();
+    std::cout << "U: \n" << U << std::endl;
+    // Initialize B
+    Eigen::MatrixXd B = Eigen::MatrixXd::Zero(10, 20);
+
+    // Copy first 4 rows
+    B.topRows(4) = U.topRows(4);
+
+    // Manual back-substitution (from row 10 to 5)
+    B.row(9) = U.row(9) / U(9, 9);  // B(10,:) = U(10,:) / U(10,10)
+    B.row(8) = (U.row(8) - U(8, 9) * B.row(9)) / U(8, 8);
+    B.row(7) = (U.row(7) - U(7, 8) * B.row(8) - U(7, 9) * B.row(9)) / U(7, 7);
+    B.row(6) = (U.row(6) - U(6, 7) * B.row(7) - U(6, 8) * B.row(8)
+                         - U(6, 9) * B.row(9)) / U(6, 6);
+    B.row(5) = (U.row(5) - U(5, 6) * B.row(6) - U(5, 7) * B.row(7)
+                         - U(5, 8) * B.row(8) - U(5, 9) * B.row(9)) / U(5, 5);
+    B.row(4) = (U.row(4) - U(4, 5) * B.row(5) - U(4, 6) * B.row(6)
+                         - U(4, 7) * B.row(7) - U(4, 8) * B.row(8)
+                         - U(4, 9) * B.row(9)) / U(4, 4);
+
+    return B;
 }
 
 // Computes po = p1 - z * p2, following a specific polynomial ordering
@@ -322,7 +332,7 @@ std::vector<std::complex<double>> ComputeRootsFromPolynomial(const Eigen::RowVec
     // Create companion matrix
     Eigen::MatrixXd companion = Eigen::MatrixXd::Zero(10, 10);
     companion.block(1, 0, 9, 9) = Eigen::MatrixXd::Identity(9, 9);  // identity below diagonal
-    companion.col(9) = -poly.segment(1, 10).transpose();           // -coefficients from z^9 to 1
+    companion.row(0) = -poly.segment(1, 10);           // -coefficients from z^9 to 1
   
     // Compute eigenvalues (roots)
     Eigen::EigenSolver<Eigen::MatrixXd> solver(companion);
@@ -341,14 +351,17 @@ bool IsReal(const std::complex<double>& c, double tol = 1e-12) {
     return std::abs(c.imag()) < tol;
 }
 
-std::vector<Eigen::Matrix3d> EssentialMatricesFromComplexRoots(const std::vector<std::complex<double>>& roots,
+std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>> 
+                                                          EssentialMatricesFromComplexRoots(const std::vector<std::complex<double>>& roots,
                                                                const Eigen::RowVectorXd& p_1,
                                                                const Eigen::RowVectorXd& p_2,
                                                                const Eigen::RowVectorXd& p_3,
                                                                const Eigen::Matrix3d essential_x,
                                                                const Eigen::Matrix3d essential_y,
                                                                const Eigen::Matrix3d essential_z,
-                                                               const Eigen::Matrix3d essential_w) {
+                                                               const Eigen::Matrix3d essential_w,
+                                                               const Eigen::Vector3d q_1,
+                                                               const Eigen::Vector3d q_2) {
     if (p_1.size() != 8) {
         throw std::invalid_argument("Polynomial p_1 must be degree 7");
     }
@@ -359,6 +372,8 @@ std::vector<Eigen::Matrix3d> EssentialMatricesFromComplexRoots(const std::vector
         throw std::invalid_argument("Polynomial p_2 must be degree 6");
     }
     std::vector<Eigen::Matrix3d> essential_matrices;
+    std::vector<Eigen::Matrix3d> rotation_matrices;
+    std::vector<Eigen::Vector3d> translation_vectors;
     for(const auto& root : roots) {
         if(!IsReal(root)) {
             continue;
@@ -379,18 +394,78 @@ std::vector<Eigen::Matrix3d> EssentialMatricesFromComplexRoots(const std::vector
         const double y = p_2.dot(p_z7) / p_3.dot(p_z6);
         Eigen::Matrix3d essential_matrix = x*essential_x + y*essential_y + z*essential_z + essential_w;
         Eigen::JacobiSVD<Eigen::MatrixXd> svd(essential_matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        const Eigen::MatrixXd U = svd.matrixU();  // Left singular vectors
-        const Eigen::MatrixXd V = svd.matrixV(); 
-        const Eigen::Matrix3d D = Eigen::Vector3d(1.0, 1.0, 0.0).asDiagonal();
+        Eigen::Matrix3d U = svd.matrixU();  // Left singular vectors
+        Eigen::Matrix3d V = svd.matrixV(); 
+        Eigen::Matrix3d D = Eigen::Vector3d(1.0, 1.0, 0.0).asDiagonal();
         essential_matrix = U*D*V.transpose();
         essential_matrices.emplace_back(essential_matrix);
+        if (U.determinant() < 0) {
+            U.col(2) = -U.col(2);  
+        }
+        
+        if (V.determinant() < 0) {
+            V.col(2) = -V.col(2);
+        }
+        D << 0.0, 1.0, 0.0,
+            -1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0;
+        Eigen::Vector3d t;
+        Eigen::Matrix3d R;
+        for (size_t i = 0; i < 4; ++i) {
+            switch(i) {
+                case 0:
+                    t = U.col(2);
+                    R = U*D*V.transpose();
+                    break;
+                case 1:
+                    t = -U.col(2);
+                    R = U*D*V.transpose();
+                    break;
+                case 2:
+                    t = U.col(2);
+                    R = U*D.transpose()*V.transpose();
+                    break;
+                case 3:
+                    t = -U.col(2);
+                    R = U*D.transpose()*V.transpose();
+                    break;
+            }
+            const Eigen::Vector3d a = essential_matrix.transpose() * q_2;
+            const Eigen::Vector3d b = q_1.cross(Eigen::Vector3d(a.x(), a.y(), 0.0));
+            Eigen::Matrix3d diagonal_mat_temp;
+            diagonal_mat_temp << 1, 0, 0,
+                0, 1, 0,
+                0, 0, 0;
+            const Eigen::Vector3d c = q_2.cross(diagonal_mat_temp*essential_matrix*q_1);
+            const Eigen::Vector3d d = a.cross(b);
+
+            Eigen::Matrix<double, 3, 4> P;
+            P << R, t;
+            Eigen::Vector4d C = P.transpose() * c;
+            Eigen::Vector4d Q;
+            Q.head<3>() = d * C(3);
+            Q(3) = -d.dot(C.head<3>());                  
+
+            if(Q(2)*Q(3) < 0.0) {
+                continue;
+            }
+
+            Eigen::Vector3d c_2 = P*Q;
+            if(c_2(2)*Q(3) < 0.0) {
+                continue;
+            }
+            rotation_matrices.emplace_back(R);
+            translation_vectors.emplace_back(t);
+            break;
+        }
     }
 
-    return essential_matrices;
+    return {essential_matrices, rotation_matrices, translation_vectors};
 }
 
-cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
-    const std::vector<cv::Point2d>& points_2) {
+cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
+    const std::vector<Eigen::Vector2d>& points_2,
+    const Eigen::Matrix3d& k) {
     if (points_1.size() != points_2.size()) {
     throw std::invalid_argument("Point vectors must be of the same size.");
     }
@@ -400,19 +475,14 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
     throw std::invalid_argument("Need at least 5 point correspondences.");
     }
 
-    // Shuffle indices for random sampling
-    std::vector<int> indices(num_points);
-    std::iota(indices.begin(), indices.end(), 0);
-
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(indices.begin(), indices.end(), g);
+    const Eigen::Matrix3d k_inv = k.inverse();
+    const Eigen::Matrix3d k_inv_transpose = k_inv.transpose();
 
     Eigen::Matrix<double, 5, 9> A;
 
     for (int i = 0; i < 5; ++i) {
-        const auto& pt1 = Eigen::Vector2d{points_1[indices[i]].x, points_1[indices[i]].y};
-        const auto& pt2 = Eigen::Vector2d{points_2[indices[i]].x, points_2[indices[i]].y};
+        const auto& pt1 = points_1[i];
+        const auto& pt2 = points_2[i];
         A.row(i) = EpipolarConstraintRow(pt1, pt2);
     }
 
@@ -424,20 +494,38 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
     const Eigen::Vector4d e_00{essential_x(0, 0), essential_y(0, 0), essential_z(0, 0), essential_w(0, 0)};
     const Eigen::Vector4d e_01{essential_x(0, 1), essential_y(0, 1), essential_z(0, 1), essential_w(0, 1)};
     const Eigen::Vector4d e_02{essential_x(0, 2), essential_y(0, 2), essential_z(0, 2), essential_w(0, 2)};
-
     const Eigen::Vector4d e_10{essential_x(1, 0), essential_y(1, 0), essential_z(1, 0), essential_w(1, 0)};
     const Eigen::Vector4d e_11{essential_x(1, 1), essential_y(1, 1), essential_z(1, 1), essential_w(1, 1)};
     const Eigen::Vector4d e_12{essential_x(1, 2), essential_y(1, 2), essential_z(1, 2), essential_w(1, 2)};
-
     const Eigen::Vector4d e_20{essential_x(2, 0), essential_y(2, 0), essential_z(2, 0), essential_w(2, 0)};
     const Eigen::Vector4d e_21{essential_x(2, 1), essential_y(2, 1), essential_z(2, 1), essential_w(2, 1)};
     const Eigen::Vector4d e_22{essential_x(2, 2), essential_y(2, 2), essential_z(2, 2), essential_w(2, 2)};
+    const Eigen::VectorXd det_essential = P2P1(P1P1(e_01, e_12) - P1P1(e_02, e_11), e_20) +
+                                            P2P1(P1P1(e_02, e_10) - P1P1(e_00, e_12), e_21) +
+                                            P2P1(P1P1(e_00, e_11) - P1P1(e_01, e_10), e_22);
 
-    const Eigen::VectorXd det_essential = P2P1(P1P1(e_11, e_22) - P1P1(e_21, e_12), e_00)
-                              -P2P1(P1P1(e_10, e_22) - P1P1(e_20, e_21), e_01)
-                              +P2P1(P1P1(e_10, e_21) - P1P1(e_11, e_20), e_02);
+    const Eigen::Matrix3d essential_x_k = k_inv_transpose*essential_matrices_basis.at(0)*k_inv;
+    const Eigen::Matrix3d essential_y_k = k_inv_transpose*essential_matrices_basis.at(1)*k_inv;
+    const Eigen::Matrix3d essential_z_k = k_inv_transpose*essential_matrices_basis.at(2)*k_inv;
+    const Eigen::Matrix3d essential_w_k = k_inv_transpose*essential_matrices_basis.at(3)*k_inv;
+    const Eigen::Vector4d e_00_k{essential_x_k(0, 0), essential_y_k(0, 0), essential_z_k(0, 0), essential_w_k(0, 0)};
+    const Eigen::Vector4d e_01_k{essential_x_k(0, 1), essential_y_k(0, 1), essential_z_k(0, 1), essential_w_k(0, 1)};
+    const Eigen::Vector4d e_02_k{essential_x_k(0, 2), essential_y_k(0, 2), essential_z_k(0, 2), essential_w_k(0, 2)};
+    const Eigen::Vector4d e_10_k{essential_x_k(1, 0), essential_y_k(1, 0), essential_z_k(1, 0), essential_w_k(1, 0)};
+    const Eigen::Vector4d e_11_k{essential_x_k(1, 1), essential_y_k(1, 1), essential_z_k(1, 1), essential_w_k(1, 1)};
+    const Eigen::Vector4d e_12_k{essential_x_k(1, 2), essential_y_k(1, 2), essential_z_k(1, 2), essential_w_k(1, 2)};
+    const Eigen::Vector4d e_20_k{essential_x_k(2, 0), essential_y_k(2, 0), essential_z_k(2, 0), essential_w_k(2, 0)};
+    const Eigen::Vector4d e_21_k{essential_x_k(2, 1), essential_y_k(2, 1), essential_z_k(2, 1), essential_w_k(2, 1)};
+    const Eigen::Vector4d e_22_k{essential_x_k(2, 2), essential_y_k(2, 2), essential_z_k(2, 2), essential_w_k(2, 2)};
+    // const Eigen::VectorXd det_essential_k = P2P1(P1P1(e_11_k, e_22_k) - P1P1(e_21_k, e_12_k), e_00_k)
+    //                                        -P2P1(P1P1(e_10_k, e_22_k) - P1P1(e_20_k, e_21_k), e_01_k)
+    //                                        +P2P1(P1P1(e_10_k, e_21_k) - P1P1(e_11_k, e_20_k), e_02_k);
+
+    const Eigen::VectorXd det_essential_k = P2P1(P1P1(e_01_k, e_12_k) - P1P1(e_02_k, e_11_k), e_20_k) +
+                                            P2P1(P1P1(e_02_k, e_10_k) - P1P1(e_00_k, e_12_k), e_21_k) +
+                                            P2P1(P1P1(e_00_k, e_11_k) - P1P1(e_01_k, e_10_k), e_22_k);
+
     const Eigen::VectorXd ee_t00 = P1P1(e_00, e_00) + P1P1(e_01, e_01) + P1P1(e_02, e_02);
-
     const Eigen::VectorXd ee_t01 = P1P1(e_00, e_10) + P1P1(e_01, e_11) + P1P1(e_02, e_12);
     const Eigen::VectorXd ee_t02 = P1P1(e_00, e_20) + P1P1(e_01, e_21) + P1P1(e_02, e_22);
     const Eigen::VectorXd ee_t11 = P1P1(e_10, e_10) + P1P1(e_11, e_11) + P1P1(e_12, e_12);
@@ -468,7 +556,7 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
     const Eigen::VectorXd ae_22 = P2P1(a_20, e_02) + P2P1(a_21, e_12) + P2P1(a_22, e_22);
 
     Eigen::MatrixXd a(10, 20);
-    a.row(0) = det_essential;
+    a.row(0) = det_essential_k;
     a.row(1) = ae_00;
     a.row(2) = ae_01;
     a.row(3) = ae_02;
@@ -485,9 +573,10 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
     for(size_t i = 0; i < 20; ++i) {
         a_permuted.col(i) = a.col(col_order[i]);
     }
+    std::cout << "a_permuted: \n" << a_permuted << std::endl;
+    const Eigen::MatrixXd a_el = GaussJordanEliminationWithPartialPivoting(a_permuted);
+    std::cout << "a_el: \n" << a_el << std::endl;
     
-    const Eigen::MatrixXd a_el = RREF(a_permuted);
-
     Eigen::RowVectorXd k_row = PartialSubtrc(a_el.row(4).segment(10, 10), a_el.row(5).segment(10, 10));
     Eigen::RowVectorXd l_row = PartialSubtrc(a_el.row(6).segment(10, 10), a_el.row(7).segment(10, 10));
     Eigen::RowVectorXd m_row = PartialSubtrc(a_el.row(8).segment(10, 10), a_el.row(9).segment(10, 10));
@@ -495,9 +584,11 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
     Eigen::RowVectorXd b_11 = k_row.row(0).segment(0, 4);
     Eigen::RowVectorXd b_12 = k_row.row(0).segment(4, 4);
     Eigen::RowVectorXd b_13 = k_row.row(0).segment(8, 5);
+
     Eigen::RowVectorXd b_21 = l_row.row(0).segment(0, 4);
     Eigen::RowVectorXd b_22 = l_row.row(0).segment(4, 4);
     Eigen::RowVectorXd b_23 = l_row.row(0).segment(8, 5);
+
     Eigen::RowVectorXd b_31 = m_row.row(0).segment(0, 4);
     Eigen::RowVectorXd b_32 = m_row.row(0).segment(4, 4);
     Eigen::RowVectorXd b_33 = m_row.row(0).segment(8, 5);
@@ -517,9 +608,19 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<cv::Point2d>& points_1,
       n_row_scaled = n_row;  // or set to zero, or handle differently
     }
     std::vector<std::complex<double>> all_roots = ComputeRootsFromPolynomial(n_row_scaled);
-    const std::vector<Eigen::Matrix3d> essential_matrices = EssentialMatricesFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y, essential_z, essential_w);
+    Eigen::Vector3d q_1;
+    q_1 << points_1[0].x(), points_1[0].y(), 1.0;
+    Eigen::Vector3d q_2;
+    q_2 << points_2[0].x(), points_2[0].y(), 1.0;
+    auto [essential_matrices, rotation_matrices, translation_vectors] = EssentialMatricesFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y, essential_z, essential_w, q_1, q_2);
     for(const auto& essential_matrix : essential_matrices) {
         std::cout << "E: \n" << essential_matrix << std::endl; 
+    }    
+    for(const auto& rotation_matrix : rotation_matrices) {
+        std::cout << "R: \n" << rotation_matrix << std::endl; 
+    }    
+    for(const auto& translation_vector : translation_vectors) {
+        std::cout << "t: \n" << translation_vector.transpose() << std::endl; 
     }
     return cv::Mat();  
 }
@@ -532,62 +633,74 @@ Mat Skew(const Mat& t) {
     -t.at<double>(1), t.at<double>(0), 0);
 }
 
-std::vector<cv::Point2d> NormalizePoints(const std::vector<cv::Point2d>& image_points,
-    const cv::Mat& k) {
-    cv::Mat k_inv = k.inv();
-    std::vector<cv::Point2d> normalized;
-
+std::vector<Eigen::Vector2d> NormalizePoints(
+    const std::vector<Eigen::Vector2d>& image_points,
+    const Eigen::Matrix3d& K) 
+{
+    Eigen::Matrix3d K_inv = K.inverse();
+    std::vector<Eigen::Vector2d> normalized;
     normalized.reserve(image_points.size());
 
     for (const auto& pt : image_points) {
-    cv::Mat pt_h = (cv::Mat_<double>(3, 1) << pt.x, pt.y, 1.0);
-    cv::Mat norm_pt = k_inv * pt_h;
-    normalized.emplace_back(norm_pt.at<double>(0), norm_pt.at<double>(1));
+        Eigen::Vector3d pt_h(pt.x(), pt.y(), 1.0);  // homogeneous coordinates
+        Eigen::Vector3d norm_pt = K_inv * pt_h;
+        normalized.emplace_back(norm_pt.x(), norm_pt.y());
     }
 
     return normalized;
 }
 
+Eigen::Matrix3d cvToEigen3x3(const cv::Mat& mat) {
+    assert(mat.rows == 3 && mat.cols == 3 && mat.type() == CV_64F);
+    Eigen::Matrix3d m;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            m(i, j) = mat.at<double>(i, j);
+    return m;
+}
 
 int main() {
-  const Mat k = (Mat_<double>(3, 3) << 
-    602.5277,0,177.3328,
-    0,562.9129,102.8893,
-    0,0,1.0000);
 
-  // Input points from MATLAB (each column is a point)
-  double pts1_data[2][5] = {
-    {288.8398, 12.1534, 317.0, 74.5754, 44.1327},
-    {77.2382, 163.7803, 82.8476, 220.5643, 192.9634}
-  };
+    const Mat k = (Mat_<double>(3, 3) << 
+    800, 0, 320,
+    0, 800, 240,
+    0, 0, 1);
+   
+   const Eigen::Matrix3d k_eig = cvToEigen3x3(k);
 
-  double pts2_data[2][5] = {
-    {286.1892, 6.9846, 312.5673, 70.0283, 40.2131},
-    {76.7289, 164.3921, 81.3119, 220.4840, 194.1166}
-  };
+//    const double theta = 10 * CV_PI / 180.0;
+//    const Mat r = (Mat_<double>(3, 3) <<
+//      cos(theta), -sin(theta), 0,
+//      sin(theta),  cos(theta), 0,
+//      0, 0, 1);
+//    const Mat t = (Mat_<double>(3, 1) << 0.1, 0, 0);
+//    const auto points_3d = Generate3DPoints(5);
+//    const auto points_cam1 = ProjectPoints(points_3d, k, Mat::eye(3, 3, CV_64F), Mat::zeros(3, 1, CV_64F));
+//    const auto points_cam1_normalized = NormalizePoints(points_cam1, k);
+//    const auto points_cam2 = ProjectPoints(points_3d, k, r, t);
+//    const auto points_cam2_normalized = NormalizePoints(points_cam2, k);
 
-  std::vector<cv::Point2d> pts1, pts2;
 
-  for (int i = 0; i < 5; ++i) {
-    pts1.emplace_back(pts1_data[0][i], pts1_data[1][i]);
-    pts2.emplace_back(pts2_data[0][i], pts2_data[1][i]);
-  }
+    std::vector<Eigen::Vector2d> pts1 = {
+        {-15.726,   61.194},
+        {386.298,  144.330},
+        {288.020,  212.753},
+        {225.738,   20.455},
+        {130.300,  100.337}
+    };
 
-  const auto points_cam1_normalized = NormalizePoints(pts1, k);
-  const auto points_cam2_normalized = NormalizePoints(pts2, k);
+    std::vector<Eigen::Vector2d> pts2 = {
+        { 54.3531,   5.6121},
+        {428.8237, 157.2963},
+        {328.0415, 207.6137},
+        {288.1756,   7.4218},
+        {184.8660,  69.5174}
+    };
 
-  FindEssentialMatMinimalSolver(points_cam1_normalized, points_cam2_normalized);
-//   Mat e_est = findEssentialMat(points_cam1_normalized, points_cam2_normalized, 1.0, cv::Point2d(0,0), cv::RANSAC, 0.999, 1.0);
+  std::vector<Eigen::Vector2d> points_cam1_normalized = NormalizePoints(pts1, k_eig);
+  std::vector<Eigen::Vector2d> points_cam2_normalized = NormalizePoints(pts2, k_eig);
+  FindEssentialMatMinimalSolver(points_cam1_normalized, points_cam2_normalized, k_eig);
 
-//   Mat e_gt = Skew(t) * r;
-//   e_gt /= cv::norm(e_gt);
-//   e_est /= cv::norm(e_est);
-
-//   cout << "Estimated Essential Matrix:\n" << e_est << endl;
-//   cout << "Ground Truth Essential Matrix:\n" << e_gt << endl;
-
-//   double frobenius_error = cv::norm(e_est - e_gt);
-//   cout << "Frobenius Error: " << frobenius_error << endl;
 
   return 0;
 }

@@ -10,6 +10,8 @@ find_package(OpenCV REQUIRED)
 
 # Add your executable
 add_executable(test test.cpp)
+add_executable(unit_test unit_tests.cpp)
 
 # Link Eigen
 target_link_libraries(test Eigen3::Eigen ${OpenCV_LIBS})
+target_link_libraries(unit_test Eigen3::Eigen ${OpenCV_LIBS})
