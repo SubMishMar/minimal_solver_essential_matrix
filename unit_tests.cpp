@@ -1,6 +1,7 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
+#include <armadillo>
 
 // Returns a 9xN matrix whose columns are an orthonormal basis for the null space of A
 Eigen::MatrixXd nullSpaceBasisMatrix(const Eigen::MatrixXd& A, double tol = 1e-10) {
@@ -102,10 +103,12 @@ std::vector<std::complex<double>> ComputeRootsFromPolynomial(const Eigen::RowVec
 }
 
 int main() {
-    Eigen::RowVectorXd n_row_scaled(11);
-    n_row_scaled << 1,3.69077,2.59831,-12.909,-32.3938,-22.3431,10.1941,26.8076,17.8125,4.72901,0.424107;
-    std::vector<std::complex<double>> all_roots = ComputeRootsFromPolynomial(n_row_scaled);
-    for (const auto& root : all_roots) {
-        std::cout << "Root: " << root << std::endl;
-    }
+    arma::mat A = arma::randu<arma::mat>(3, 3);
+    arma::mat L, U, P;
+    arma::lu(L, U, P, A);
+    A.print("Original A:");
+    L.print("L:");
+    U.print("U:");
+    P.print("P:");
+    return 0;
 }

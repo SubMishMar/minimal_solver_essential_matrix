@@ -9,6 +9,7 @@
 #include <Eigen/SVD>
 #include <tuple>
 #include <limits>
+#include <armadillo>
 
 using cv::Mat;
 using cv::Mat_;
@@ -37,9 +38,9 @@ vector<Point3d> Generate3DPoints(int num_points) {
 }
 
 // Projects 3D points into 2D using intrinsic and extrinsic parameters.
-vector<Point2d> ProjectPoints(const vector<Point3d>& points, const Mat& k,
+std::vector<Eigen::Vector2d> ProjectPoints(const vector<Point3d>& points, const Mat& k,
                               const Mat& r, const Mat& t) {
-  vector<Point2d> image_points;
+  std::vector<Eigen::Vector2d> image_points;
   image_points.reserve(points.size());
 
   for (const auto& point : points) {
@@ -50,7 +51,7 @@ vector<Point2d> ProjectPoints(const vector<Point3d>& points, const Mat& k,
     double u = x_img.at<double>(0, 0) / x_img.at<double>(2, 0);
     double v = x_img.at<double>(1, 0) / x_img.at<double>(2, 0);
 
-    image_points.emplace_back(u, v);
+    image_points.emplace_back(Eigen::Vector2d(u, v));
   }
 
   return image_points;
@@ -71,43 +72,33 @@ Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1,
     return row;
 }
 
-std::vector<Eigen::Matrix3d> ComputeNullspaceEssentialCandidates(const Eigen::Matrix<double, 5, 9>& A) {
-    // Eigen::JacobiSVD<Eigen::Matrix<double, 5, 9>> svd(A, Eigen::ComputeFullV);
-    // const auto& V = svd.matrixV();  // V is 9x9
-  
-    std::vector<Eigen::Matrix3d> essential_matrices;
-    essential_matrices.reserve(4);
-  
-    // // Last 4 columns of V form the 4D null space of A
-    // for (int i = 5; i < 9; ++i) {
-    //   Eigen::VectorXd e = V.col(i);  // 9x1
-    //   Eigen::Matrix3d E;
-    //   E << e(0), e(1), e(2),
-    //        e(3), e(4), e(5),
-    //        e(6), e(7), e(8);
-    //   essential_matrices.push_back(E);
-    // }
-  
+std::vector<Eigen::Matrix3d> ComputeNullspaceEssentialCandidates(const Eigen::Matrix<double, 5, 9>& A_eigen) {
+    // Convert Eigen input to Armadillo
+    Eigen::Matrix<double, 5, 9> A_eigen_nonconst = A_eigen;
+    arma::mat A_arma(A_eigen_nonconst.data(), 5, 9, false, true);
 
-    Eigen::MatrixXd nullSpace(9, 4);
-    nullSpace << 
-        1.1595e-01,  5.5936e-02,  1.0788e-01, -3.3726e-01,
-        3.7713e-01,  4.5853e-01,  3.0210e-01,  6.9220e-01,
-        1.9632e-01, -5.7265e-01,  3.0032e-01,  1.6611e-01,
-    -5.0765e-01, -2.5850e-01, -4.6990e-01,  4.5858e-01,
-        6.2723e-02,  1.8433e-01,  3.1192e-02, -4.0772e-01,
-        4.8137e-01, -4.7532e-02, -5.1825e-01, -3.7572e-02,
-    -2.9512e-01,  5.9521e-01, -2.2829e-01, -1.7708e-02,
-    -4.7459e-01,  2.3112e-02,  5.1401e-01, -3.5030e-02,
-    -9.5368e-03,  2.8756e-02, -1.4754e-02, -5.1703e-03;
-    for(size_t i = 0; i < 4; ++i) {
-        Eigen::VectorXd e_i = nullSpace.col(i);
-        Eigen::Matrix3d E_i;
-        E_i << e_i(0), e_i(1), e_i(2),
-                e_i(3), e_i(4), e_i(5),
-                e_i(6), e_i(7), e_i(8);
-        essential_matrices.push_back(E_i);
+    // Compute null space (each column is a basis vector)
+    arma::mat N = arma::null(A_arma);  // N is 9 x 4 if nullity is 4
+
+    std::vector<Eigen::Matrix3d> essential_matrices;
+    essential_matrices.reserve(N.n_cols);  // adapt to actual number of null vectors
+
+    for (arma::uword i = 0; i < N.n_cols; ++i) {
+        // Extract the i-th 9x1 null vector from Armadillo
+        arma::vec e_arma = N.col(i);
+
+        // Copy into Eigen vector
+        Eigen::VectorXd e = Eigen::Map<Eigen::VectorXd>(e_arma.memptr(), 9);
+
+        // Reshape into 3x3 matrix
+        Eigen::Matrix3d E;
+        E << e(0), e(1), e(2),
+             e(3), e(4), e(5),
+             e(6), e(7), e(8);
+
+        essential_matrices.push_back(E);
     }
+
     return essential_matrices;
 }
   
@@ -165,129 +156,132 @@ Eigen::VectorXd P2P1(const Eigen::VectorXd& p2, const Eigen::Vector4d& p1) {
 #include <Eigen/Dense>
 #include <stdexcept>
 
-// Multiply two 3rd-order z polynomials: p1 and p2
-// p1, p2: [z³ z² z¹ 1] → size 4
-// Result: [z⁶ ... 1]   → size 7
+#include <Eigen/Dense>
+#include <stdexcept>
+
+// Multiply two 3rd-order z polynomials
+// p1, p2: length-4 vectors representing z³ → z⁰
+// Returns: length-7 vector representing z⁶ → z⁰
 Eigen::RowVectorXd PZ3PZ3(const Eigen::RowVectorXd& p1, const Eigen::RowVectorXd& p2) {
-    if (p1.size() != 4 || p2.size() != 4) {
-        throw std::invalid_argument("Both p1 and p2 must be size 4 (z^3 to 1)");
-    }
+    if (p1.size() != 4 || p2.size() != 4)
+        throw std::invalid_argument("Both polynomials must be of length 4 (z³ → z⁰)");
 
     Eigen::RowVectorXd po(7);
-    po.setZero();
 
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-        int deg = i + j;
-        if (deg <= 6) {
-            po(6 - deg) += p1(i) * p2(j);  // store in decreasing degree order
-        }
-        }
-    }
+    po(0) = p1(0) * p2(0);  // z^6
+    po(1) = p1(0) * p2(1) + p1(1) * p2(0);  // z^5
+    po(2) = p1(0) * p2(2) + p1(1) * p2(1) + p1(2) * p2(0);  // z^4
+    po(3) = p1(0) * p2(3) + p1(1) * p2(2) + p1(2) * p2(1) + p1(3) * p2(0);  // z^3
+    po(4) = p1(1) * p2(3) + p1(2) * p2(2) + p1(3) * p2(1);  // z^2
+    po(5) = p1(2) * p2(3) + p1(3) * p2(2);  // z^1
+    po(6) = p1(3) * p2(3);  // z^0
 
     return po;
 }
 
 // Multiply a 4th-order z polynomial by a 3rd-order z polynomial
-// p1: [z⁴, z³, z², z, 1]  → size 5
-// p2: [z³, z², z, 1]      → size 4
-// po: [z⁷, z⁶, ..., z, 1] → size 8
+// p1: coefficients of z⁴ → z⁰ (length 5)
+// p2: coefficients of z³ → z⁰ (length 4)
+// Returns: coefficients of z⁷ → z⁰ (length 8)
 Eigen::RowVectorXd PZ4PZ3(const Eigen::RowVectorXd& p1, const Eigen::RowVectorXd& p2) {
-    if (p1.size() != 5 || p2.size() != 4) {
-      throw std::invalid_argument("p1 must be size 5 (z^4 to 1), p2 must be size 4 (z^3 to 1)");
-    }
-  
+    if (p1.size() != 5 || p2.size() != 4)
+        throw std::invalid_argument("p1 must be length 5 and p2 must be length 4.");
+
     Eigen::RowVectorXd po(8);
-    po.setZero();
-  
-    for (int i = 0; i < 5; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        int deg = i + j;  // total degree of term
-        po(7 - deg) += p1(i) * p2(j);  // store in decreasing degree order
-      }
-    }
-  
+
+    po(0) = p1(0) * p2(0);  // z^7
+    po(1) = p1(1) * p2(0) + p1(0) * p2(1);  // z^6
+    po(2) = p1(2) * p2(0) + p1(1) * p2(1) + p1(0) * p2(2);  // z^5
+    po(3) = p1(3) * p2(0) + p1(2) * p2(1) + p1(1) * p2(2) + p1(0) * p2(3);  // z^4
+    po(4) = p1(4) * p2(0) + p1(3) * p2(1) + p1(2) * p2(2) + p1(1) * p2(3);  // z^3
+    po(5) =               p1(4) * p2(1) + p1(3) * p2(2) + p1(2) * p2(3);    // z^2
+    po(6) =                              p1(4) * p2(2) + p1(3) * p2(3);    // z^1
+    po(7) =                                             p1(4) * p2(3);     // z^0
+
     return po;
 }
 
-// Multiply a 6th-order z polynomial (p1) by a 4th-order z polynomial (p2)
-// p1: z^6 to 1 → size 7
-// p2: z^4 to 1 → size 5
-// Result: z^10 to 1 → size 11
+// Multiply a 6th-order polynomial with a 4th-order polynomial in z
+// p1: [z^6, ..., z^0] (length 7)
+// p2: [z^4, ..., z^0] (length 5)
+// returns: [z^10, ..., z^0] (length 11)
 Eigen::RowVectorXd PZ6PZ4(const Eigen::RowVectorXd& p1, const Eigen::RowVectorXd& p2) {
-    if (p1.size() != 7 || p2.size() != 5) {
-      throw std::invalid_argument("p1 must be size 7 (z^6 to 1), p2 must be size 5 (z^4 to 1)");
-    }
-  
+    if (p1.size() != 7 || p2.size() != 5)
+        throw std::invalid_argument("p1 must be length 7 and p2 must be length 5");
+
     Eigen::RowVectorXd po(11);
-    po.setZero();
-  
-    // Perform the convolution manually according to the structure
-    for (int i = 0; i < 7; ++i) {
-      for (int j = 0; j < 5; ++j) {
-        int deg = i + j;           // z^(6-i) * z^(4-j) = z^(10 - (i + j))
-        po(10 - deg) += p1(i) * p2(j);
-      }
-    }
-  
+
+    po(0) = p1(0) * p2(0);  // z^10
+    po(1) = p1(1) * p2(0) + p1(0) * p2(1);  // z^9
+    po(2) = p1(2) * p2(0) + p1(1) * p2(1) + p1(0) * p2(2);  // z^8
+    po(3) = p1(3) * p2(0) + p1(2) * p2(1) + p1(1) * p2(2) + p1(0) * p2(3);  // z^7
+    po(4) = p1(4) * p2(0) + p1(3) * p2(1) + p1(2) * p2(2) + p1(1) * p2(3) + p1(0) * p2(4);  // z^6
+    po(5) = p1(5) * p2(0) + p1(4) * p2(1) + p1(3) * p2(2) + p1(2) * p2(3) + p1(1) * p2(4);  // z^5
+    po(6) = p1(6) * p2(0) + p1(5) * p2(1) + p1(4) * p2(2) + p1(3) * p2(3) + p1(2) * p2(4);  // z^4
+    po(7) =               p1(6) * p2(1) + p1(5) * p2(2) + p1(4) * p2(3) + p1(3) * p2(4);    // z^3
+    po(8) =                              p1(6) * p2(2) + p1(5) * p2(3) + p1(4) * p2(4);    // z^2
+    po(9) =                                             p1(6) * p2(3) + p1(5) * p2(4);     // z^1
+    po(10) =                                                             p1(6) * p2(4);    // z^0
+
     return po;
 }
 
-// Multiply a 7th-order z polynomial (p1) by a 3rd-order z polynomial (p2)
-// p1: [z⁷ z⁶ z⁵ z⁴ z³ z² z¹ 1] → size 8
-// p2: [z³ z² z¹ 1]             → size 4
-// Result: [z¹⁰ ... 1]          → size 11
+// Multiply a 7th-order polynomial with a 3rd-order polynomial in z
+// p1: [z^7, ..., z^0] (length 8)
+// p2: [z^3, ..., z^0] (length 4)
+// returns: [z^10, ..., z^0] (length 11)
 Eigen::RowVectorXd PZ7PZ3(const Eigen::RowVectorXd& p1, const Eigen::RowVectorXd& p2) {
-    if (p1.size() != 8 || p2.size() != 4) {
-      throw std::invalid_argument("p1 must be size 8 (z^7 to 1), p2 must be size 4 (z^3 to 1)");
-    }
-  
+    if (p1.size() != 8 || p2.size() != 4)
+        throw std::invalid_argument("p1 must be of length 8 and p2 of length 4");
+
     Eigen::RowVectorXd po(11);
-    po.setZero();
-  
-    for (int i = 0; i < 8; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        int deg = i + j;
-        if (deg <= 10) {
-          po(10 - deg) += p1(i) * p2(j);  // store in decreasing degree order
-        }
-      }
-    }
-  
+
+    po(0) = p1(0) * p2(0);  // z^10
+    po(1) = p1(1) * p2(0) + p1(0) * p2(1);  // z^9
+    po(2) = p1(2) * p2(0) + p1(1) * p2(1) + p1(0) * p2(2);  // z^8
+    po(3) = p1(3) * p2(0) + p1(2) * p2(1) + p1(1) * p2(2) + p1(0) * p2(3);  // z^7
+    po(4) = p1(4) * p2(0) + p1(3) * p2(1) + p1(2) * p2(2) + p1(1) * p2(3);  // z^6
+    po(5) = p1(5) * p2(0) + p1(4) * p2(1) + p1(3) * p2(2) + p1(2) * p2(3);  // z^5
+    po(6) = p1(6) * p2(0) + p1(5) * p2(1) + p1(4) * p2(2) + p1(3) * p2(3);  // z^4
+    po(7) = p1(7) * p2(0) + p1(6) * p2(1) + p1(5) * p2(2) + p1(4) * p2(3);  // z^3
+    po(8) =               p1(7) * p2(1) + p1(6) * p2(2) + p1(5) * p2(3);    // z^2
+    po(9) =                              p1(7) * p2(2) + p1(6) * p2(3);    // z^1
+    po(10) =                                             p1(7) * p2(3);    // z^0
+
     return po;
 }
 
 
+// Hybrid: Uses Armadillo internally but exposes Eigen interface
+Eigen::MatrixXd GaussJordanEliminationWithPartialPivoting(const Eigen::MatrixXd& A_eigen) {
+    if (A_eigen.rows() != 10 || A_eigen.cols() != 20) {
+        throw std::runtime_error("Matrix must be 10x20");
+    }
+    Eigen::MatrixXd A_eigen_nonconst = A_eigen;
+    // Convert Eigen to Armadillo
+    arma::mat A(A_eigen_nonconst.data(), A_eigen_nonconst.rows(), A_eigen_nonconst.cols(), false, true);
 
-Eigen::MatrixXd GaussJordanEliminationWithPartialPivoting(const Eigen::MatrixXd& A) {
-    assert(A.rows() == 10 && A.cols() == 20 && "A must be 10x20");
+    arma::mat L, U, P;
+    arma::lu(L, U, P, A);  // MATLAB-style LU: P*A = L*U
+    // U.print("U:");
+    arma::mat B(10, 20, arma::fill::zeros);
+    B.rows(0, 3) = U.rows(0, 3);  // First 4 rows directly from U
 
-    // Use FullPivLU to support rectangular matrix like MATLAB
-    Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
-
-    // Reconstruct MATLAB-style U as U = P * A
-    Eigen::MatrixXd PA = lu.permutationP() * A;
-    Eigen::MatrixXd U = PA.triangularView<Eigen::Upper>();
-    std::cout << "U: \n" << U << std::endl;
-    // Initialize B
-    Eigen::MatrixXd B = Eigen::MatrixXd::Zero(10, 20);
-
-    // Copy first 4 rows
-    B.topRows(4) = U.topRows(4);
-
-    // Manual back-substitution (from row 10 to 5)
-    B.row(9) = U.row(9) / U(9, 9);  // B(10,:) = U(10,:) / U(10,10)
+    // Manual back-substitution
+    B.row(9) = U.row(9) / U(9, 9);
     B.row(8) = (U.row(8) - U(8, 9) * B.row(9)) / U(8, 8);
     B.row(7) = (U.row(7) - U(7, 8) * B.row(8) - U(7, 9) * B.row(9)) / U(7, 7);
-    B.row(6) = (U.row(6) - U(6, 7) * B.row(7) - U(6, 8) * B.row(8)
-                         - U(6, 9) * B.row(9)) / U(6, 6);
-    B.row(5) = (U.row(5) - U(5, 6) * B.row(6) - U(5, 7) * B.row(7)
-                         - U(5, 8) * B.row(8) - U(5, 9) * B.row(9)) / U(5, 5);
-    B.row(4) = (U.row(4) - U(4, 5) * B.row(5) - U(4, 6) * B.row(6)
-                         - U(4, 7) * B.row(7) - U(4, 8) * B.row(8)
-                         - U(4, 9) * B.row(9)) / U(4, 4);
+    B.row(6) = (U.row(6) - U(6, 7) * B.row(7) - U(6, 8) * B.row(8) - U(6, 9) * B.row(9)) / U(6, 6);
+    B.row(5) = (U.row(5) - U(5, 6) * B.row(6) - U(5, 7) * B.row(7) - U(5, 8) * B.row(8) - U(5, 9) * B.row(9)) / U(5, 5);
+    B.row(4) = (U.row(4) - U(4, 5) * B.row(5) - U(4, 6) * B.row(6) - U(4, 7) * B.row(7) - U(4, 8) * B.row(8) - U(4, 9) * B.row(9)) / U(4, 4);
 
-    return B;
+    // Convert back to Eigen
+    Eigen::MatrixXd B_eigen(10, 20);
+    for (int i = 0; i < 10; ++i)
+        for (int j = 0; j < 20; ++j)
+            B_eigen(i, j) = B(i, j);
+
+    return B_eigen;
 }
 
 // Computes po = p1 - z * p2, following a specific polynomial ordering
@@ -500,9 +494,9 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
     const Eigen::Vector4d e_20{essential_x(2, 0), essential_y(2, 0), essential_z(2, 0), essential_w(2, 0)};
     const Eigen::Vector4d e_21{essential_x(2, 1), essential_y(2, 1), essential_z(2, 1), essential_w(2, 1)};
     const Eigen::Vector4d e_22{essential_x(2, 2), essential_y(2, 2), essential_z(2, 2), essential_w(2, 2)};
-    const Eigen::VectorXd det_essential = P2P1(P1P1(e_01, e_12) - P1P1(e_02, e_11), e_20) +
-                                            P2P1(P1P1(e_02, e_10) - P1P1(e_00, e_12), e_21) +
-                                            P2P1(P1P1(e_00, e_11) - P1P1(e_01, e_10), e_22);
+    // const Eigen::VectorXd det_essential = P2P1(P1P1(e_01, e_12) - P1P1(e_02, e_11), e_20) +
+    //                                         P2P1(P1P1(e_02, e_10) - P1P1(e_00, e_12), e_21) +
+    //                                         P2P1(P1P1(e_00, e_11) - P1P1(e_01, e_10), e_22);
 
     const Eigen::Matrix3d essential_x_k = k_inv_transpose*essential_matrices_basis.at(0)*k_inv;
     const Eigen::Matrix3d essential_y_k = k_inv_transpose*essential_matrices_basis.at(1)*k_inv;
@@ -517,9 +511,6 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
     const Eigen::Vector4d e_20_k{essential_x_k(2, 0), essential_y_k(2, 0), essential_z_k(2, 0), essential_w_k(2, 0)};
     const Eigen::Vector4d e_21_k{essential_x_k(2, 1), essential_y_k(2, 1), essential_z_k(2, 1), essential_w_k(2, 1)};
     const Eigen::Vector4d e_22_k{essential_x_k(2, 2), essential_y_k(2, 2), essential_z_k(2, 2), essential_w_k(2, 2)};
-    // const Eigen::VectorXd det_essential_k = P2P1(P1P1(e_11_k, e_22_k) - P1P1(e_21_k, e_12_k), e_00_k)
-    //                                        -P2P1(P1P1(e_10_k, e_22_k) - P1P1(e_20_k, e_21_k), e_01_k)
-    //                                        +P2P1(P1P1(e_10_k, e_21_k) - P1P1(e_11_k, e_20_k), e_02_k);
 
     const Eigen::VectorXd det_essential_k = P2P1(P1P1(e_01_k, e_12_k) - P1P1(e_02_k, e_11_k), e_20_k) +
                                             P2P1(P1P1(e_02_k, e_10_k) - P1P1(e_00_k, e_12_k), e_21_k) +
@@ -573,10 +564,9 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
     for(size_t i = 0; i < 20; ++i) {
         a_permuted.col(i) = a.col(col_order[i]);
     }
-    std::cout << "a_permuted: \n" << a_permuted << std::endl;
+
     const Eigen::MatrixXd a_el = GaussJordanEliminationWithPartialPivoting(a_permuted);
-    std::cout << "a_el: \n" << a_el << std::endl;
-    
+
     Eigen::RowVectorXd k_row = PartialSubtrc(a_el.row(4).segment(10, 10), a_el.row(5).segment(10, 10));
     Eigen::RowVectorXd l_row = PartialSubtrc(a_el.row(6).segment(10, 10), a_el.row(7).segment(10, 10));
     Eigen::RowVectorXd m_row = PartialSubtrc(a_el.row(8).segment(10, 10), a_el.row(9).segment(10, 10));
@@ -598,7 +588,7 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
     const Eigen::RowVectorXd p_3 = PZ3PZ3(b_11, b_22) - PZ3PZ3(b_12, b_21);
 
     const Eigen::RowVectorXd n_row = PZ7PZ3(p_1, b_31) + PZ7PZ3(p_2, b_32) + PZ6PZ4(p_3, b_33);
-
+    
     Eigen::RowVectorXd n_row_scaled;
 
     if (std::abs(n_row(0)) > 1e-12) {
@@ -607,6 +597,7 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
       std::cerr << "Warning: n_row(0) is too close to zero. Skipping normalization.\n";
       n_row_scaled = n_row;  // or set to zero, or handle differently
     }
+    std::cout << "n_row_scaled: \n" << n_row_scaled << std::endl;
     std::vector<std::complex<double>> all_roots = ComputeRootsFromPolynomial(n_row_scaled);
     Eigen::Vector3d q_1;
     q_1 << points_1[0].x(), points_1[0].y(), 1.0;
@@ -668,37 +659,18 @@ int main() {
    
    const Eigen::Matrix3d k_eig = cvToEigen3x3(k);
 
-//    const double theta = 10 * CV_PI / 180.0;
-//    const Mat r = (Mat_<double>(3, 3) <<
-//      cos(theta), -sin(theta), 0,
-//      sin(theta),  cos(theta), 0,
-//      0, 0, 1);
-//    const Mat t = (Mat_<double>(3, 1) << 0.1, 0, 0);
-//    const auto points_3d = Generate3DPoints(5);
-//    const auto points_cam1 = ProjectPoints(points_3d, k, Mat::eye(3, 3, CV_64F), Mat::zeros(3, 1, CV_64F));
-//    const auto points_cam1_normalized = NormalizePoints(points_cam1, k);
-//    const auto points_cam2 = ProjectPoints(points_3d, k, r, t);
-//    const auto points_cam2_normalized = NormalizePoints(points_cam2, k);
+   const double theta = 10 * CV_PI / 180.0;
+   const Mat r = (Mat_<double>(3, 3) <<
+     cos(theta), -sin(theta), 0,
+     sin(theta),  cos(theta), 0,
+     0, 0, 1);
+   const Mat t = (Mat_<double>(3, 1) << 0.1, 0, 0);
+   const auto points_3d = Generate3DPoints(5);
+   const auto points_cam1 = ProjectPoints(points_3d, k, Mat::eye(3, 3, CV_64F), Mat::zeros(3, 1, CV_64F));
+   const auto points_cam1_normalized = NormalizePoints(points_cam1, k_eig);
+   const auto points_cam2 = ProjectPoints(points_3d, k, r, t);
+   const auto points_cam2_normalized = NormalizePoints(points_cam2, k_eig);
 
-
-    std::vector<Eigen::Vector2d> pts1 = {
-        {-15.726,   61.194},
-        {386.298,  144.330},
-        {288.020,  212.753},
-        {225.738,   20.455},
-        {130.300,  100.337}
-    };
-
-    std::vector<Eigen::Vector2d> pts2 = {
-        { 54.3531,   5.6121},
-        {428.8237, 157.2963},
-        {328.0415, 207.6137},
-        {288.1756,   7.4218},
-        {184.8660,  69.5174}
-    };
-
-  std::vector<Eigen::Vector2d> points_cam1_normalized = NormalizePoints(pts1, k_eig);
-  std::vector<Eigen::Vector2d> points_cam2_normalized = NormalizePoints(pts2, k_eig);
   FindEssentialMatMinimalSolver(points_cam1_normalized, points_cam2_normalized, k_eig);
 
 
