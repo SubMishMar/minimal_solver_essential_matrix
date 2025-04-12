@@ -59,3 +59,10 @@ EstimateMotionFromComplexRoots(const std::vector<std::complex<double>>& roots,
                                const Eigen::Matrix3d& essential_z,
                                const Eigen::Matrix3d& essential_w, const Eigen::Vector3d& q_1,
                                const Eigen::Vector3d& q_2);
+
+double ComputeEpipolarConstraint(const Eigen::Vector2d& point_1, const Eigen::Vector2d& point_2,
+                                 const Eigen::Matrix3d& essential_matrix);
+
+double ComputeEpipolarConstraint(const std::vector<Eigen::Vector2d>& point_1,
+                                 const std::vector<Eigen::Vector2d>& point_2,
+                                 const Eigen::Matrix3d&              essential_matrix);

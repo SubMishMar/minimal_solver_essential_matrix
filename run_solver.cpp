@@ -1,4 +1,5 @@
 #include "minimal_solver.h"
+#include "utility.h"
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -104,40 +105,103 @@ Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, 
     return {R, t};
 }
 
+double PoseError(const Eigen::Matrix3d& R1, const Eigen::Vector3d& t1, const Eigen::Matrix3d& R2,
+                 const Eigen::Vector3d& t2)
+{
+    Eigen::Matrix3d R_rel       = R1.transpose() * R2;
+    double          cos_angle_R = (R_rel.trace() - 1.0) / 2.0;
+    cos_angle_R                 = std::clamp(cos_angle_R, -1.0, 1.0); // Ensure numerical stability
+    double rot_error_deg        = std::acos(cos_angle_R) * 180.0 / M_PI;
+
+    Eigen::Vector3d t1_norm     = t1.normalized();
+    Eigen::Vector3d t2_norm     = t2.normalized();
+    double          cos_angle_t = t1_norm.dot(t2_norm);
+    cos_angle_t                 = std::clamp(cos_angle_t, -1.0, 1.0);
+    double trans_error_deg      = std::acos(cos_angle_t) * 180.0 / M_PI;
+
+    return rot_error_deg + trans_error_deg;
+}
+
 int main()
 {
     Eigen::Matrix3d k;
     k << 800, 0, 320, 0, 800, 240, 0, 0, 1;
 
-    auto pose = GeneratePose(-5.0, 5.0, 10.0, 0.1, -0.1, -0.5);
+    // Set up random generators
+    std::random_device               rd;
+    std::mt19937                     gen(rd());
+    std::uniform_real_distribution<> rot_dist_deg(-10.0, 10.0); // in degrees
+    std::uniform_real_distribution<> trans_dist(-1.0, 1.0);     // for t
+
+    // Generate rotation angles in deg
+    const double rx = rot_dist_deg(gen);
+    const double ry = rot_dist_deg(gen);
+    const double rz = rot_dist_deg(gen);
+
+    // Generate and normalize translation vector
+    Eigen::Vector3d position(trans_dist(gen), trans_dist(gen), trans_dist(gen));
+    position.normalize();
+
+    const double tx = position.x();
+    const double ty = position.y();
+    const double tz = position.z();
+
+    auto pose = GeneratePose(rx, ry, rz, tx, ty, tz);
 
     Eigen::Matrix3d r = pose.rotation;
     Eigen::Vector3d t = pose.translation;
+    std::cout << "R (gt) = \n" << r << std::endl;
+    std::cout << "t (gt) = \t" << t.transpose() << std::endl;
 
-    const auto points_3d = Generate3DPoints(5);
-    const auto points_cam1 =
-        ProjectPoints(points_3d, k, Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
-    const auto points_cam1_normalized = NormalizePoints(points_cam1, k);
-    const auto points_cam2            = ProjectPoints(points_3d, k, r, t);
-    const auto points_cam2_normalized = NormalizePoints(points_cam2, k);
+    const auto points_3d_all = Generate3DPoints(100);
+
+    const auto points_cam1_all =
+        ProjectPoints(points_3d_all, k, Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
+    const auto points_cam2_all = ProjectPoints(points_3d_all, k, r, t);
+
+    const auto points_cam1_all_normalized = NormalizePoints(points_cam1_all, k);
+    const auto points_cam2_all_normalized = NormalizePoints(points_cam2_all, k);
+
+    // Randomly pick 5 indices
+    std::vector<int> indices(100);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), std::mt19937{std::random_device{}()});
+    std::vector<int> sample_indices(indices.begin(), indices.begin() + 5);
+
+    std::vector<Eigen::Vector2d> points_cam1_sampled, points_cam2_sampled;
+    for (int idx : sample_indices)
+    {
+        points_cam1_sampled.push_back(points_cam1_all_normalized[idx]);
+        points_cam2_sampled.push_back(points_cam2_all_normalized[idx]);
+    }
 
     const auto [essential_matrices, rotation_matrices, translation_vectors] =
-        minimal_solver::FindEssentialMatMinimalSolver(points_cam1_normalized,
-                                                      points_cam2_normalized, k);
+        minimal_solver::FindEssentialMatMinimalSolver(points_cam1_sampled, points_cam2_sampled, k);
 
-    for (const auto essential_matrix : essential_matrices)
-    {
-        std::cout << "E: \n" << essential_matrix << std::endl;
-    }
+    double min_sampson = std::numeric_limits<double>::max();
+    int    best_index  = -1;
 
-    for (const auto rotation_matrix : rotation_matrices)
+    for (size_t i = 0; i < essential_matrices.size(); ++i)
     {
-        std::cout << "R: \n" << rotation_matrix << std::endl;
+        const auto&  essential_matrix = essential_matrices[i];
+        const double sampson          = std::fabs(ComputeEpipolarConstraint(
+                     points_cam1_all_normalized, points_cam2_all_normalized, essential_matrix));
+        if (sampson < min_sampson)
+        {
+            min_sampson = sampson;
+            best_index  = static_cast<int>(i);
+        }
     }
+    std::cout << "Picking the Essential Matrix that yields the minimum absolute Sampson distance."
+              << std::endl;
+    Eigen::Matrix3d E_best = essential_matrices[best_index];
+    Eigen::Matrix3d R_best = rotation_matrices[best_index];
+    Eigen::Vector3d t_best = translation_vectors[best_index];
 
-    for (const auto translation_vector : translation_vectors)
-    {
-        std::cout << "t: \t" << translation_vector.transpose() << std::endl;
-    }
+    std::cout << "E (best) = \n" << E_best << std::endl;
+    std::cout << "R (best) = \n" << R_best << std::endl;
+    std::cout << "t (best) = \t" << t_best.transpose() << std::endl;
+
+    std::cout << "Pose error: " << PoseError(r, t, R_best, t_best) << std::endl;
     return 0;
 }

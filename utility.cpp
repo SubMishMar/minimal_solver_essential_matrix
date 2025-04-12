@@ -282,6 +282,32 @@ bool IsReal(const std::complex<double>& c, double tol = 1e-12)
     return std::abs(c.imag()) < tol;
 }
 
+double ComputeEpipolarConstraint(const Eigen::Vector2d& point_1, const Eigen::Vector2d& point_2,
+                                 const Eigen::Matrix3d& essential_matrix)
+{
+    return Eigen::Vector3d(point_2.x(), point_2.y(), 1.0).transpose() * essential_matrix *
+        Eigen::Vector3d(point_1.x(), point_1.y(), 1.0);
+}
+
+double ComputeEpipolarConstraint(const std::vector<Eigen::Vector2d>& points_1,
+                                 const std::vector<Eigen::Vector2d>& points_2,
+                                 const Eigen::Matrix3d&              essential_matrix)
+{
+    if (points_1.size() != points_2.size())
+    {
+        throw std::invalid_argument("Both points vectors must be of same size");
+    }
+
+    double sum = 0.0;
+    for (size_t i = 0; i < points_1.size(); ++i)
+    {
+        sum += ComputeEpipolarConstraint(points_1[i], points_2[i], essential_matrix);
+    }
+
+    sum /= points_1.size();
+
+    return sum;
+}
 std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
 EstimateMotionFromComplexRoots(const std::vector<std::complex<double>>& roots,
                                const Eigen::RowVectorXd& p_1, const Eigen::RowVectorXd& p_2,
