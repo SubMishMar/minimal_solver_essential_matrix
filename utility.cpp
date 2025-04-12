@@ -24,16 +24,14 @@ std::vector<Eigen::Vector3d> Generate3DPoints(int num_points)
 }
 
 std::vector<Eigen::Vector2d> ProjectPoints(const std::vector<Eigen::Vector3d>& points,
-                                           const Eigen::Matrix3d& k, const Eigen::Matrix3d& r,
-                                           const Eigen::Vector3d& t)
+                                           const Eigen::Matrix3d&              k)
 {
     std::vector<Eigen::Vector2d> image_points;
     image_points.reserve(points.size());
 
     for (const auto& point : points)
     {
-        Eigen::Vector3d x_cam = r * point + t;
-        Eigen::Vector3d x_img = k * x_cam;
+        Eigen::Vector3d x_img = k * point;
 
         double u = x_img.x() / x_img.z();
         double v = x_img.y() / x_img.z();
@@ -105,6 +103,25 @@ double PoseError(const Eigen::Matrix3d& R1, const Eigen::Vector3d& t1, const Eig
     double trans_error_deg      = std::acos(cos_angle_t) * 180.0 / M_PI;
 
     return rot_error_deg + trans_error_deg;
+}
+
+Eigen::Vector3d TransformPointFromWorldToCamera(const Eigen::Vector3d& world_point,
+                                                const Eigen::Matrix3d& R, const Eigen::Vector3d& t)
+{
+    return R * world_point + t;
+}
+
+std::vector<Eigen::Vector3d> TransformPointsFromWorldToCamera(
+    const std::vector<Eigen::Vector3d>& world_points, const Eigen::Matrix3d& R,
+    const Eigen::Vector3d& t)
+{
+    std::vector<Eigen::Vector3d> camera_points;
+    camera_points.reserve(world_points.size());
+    for (const auto& world_point : world_points)
+    {
+        camera_points.emplace_back(TransformPointFromWorldToCamera(world_point, R, t));
+    }
+    return camera_points;
 }
 
 Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1, const Eigen::Vector2d& x2)

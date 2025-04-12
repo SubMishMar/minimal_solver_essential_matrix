@@ -14,6 +14,11 @@ add_executable(run_solver
     utility.cpp
 )
 
+add_executable(run_two_view_solver
+    run_two_view_solver.cpp
+    utility.cpp
+)
+
 # Include current directory for headers
 target_include_directories(run_solver
     PRIVATE
@@ -22,8 +27,20 @@ target_include_directories(run_solver
     ${ARMADILLO_INCLUDE_DIRS}
 )
 
+target_include_directories(run_two_view_solver
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${EIGEN3_INCLUDE_DIR}
+    ${ARMADILLO_INCLUDE_DIRS}
+)
+
 # Link against the libraries
 target_link_libraries(run_solver
+    PRIVATE
+    Eigen3::Eigen
+    ${ARMADILLO_LIBRARIES}
+)
+target_link_libraries(run_two_view_solver
     PRIVATE
     Eigen3::Eigen
     ${ARMADILLO_LIBRARIES}

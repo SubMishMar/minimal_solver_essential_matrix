@@ -40,17 +40,18 @@ int main()
     std::cout << "R (gt) = \n" << r << std::endl;
     std::cout << "t (gt) = \t" << t.transpose() << std::endl;
 
-    const auto points_3d_all = Generate3DPoints(100);
+    constexpr int num_points{100};
+    const auto    points_3d_all_1 = Generate3DPoints(num_points);
+    const auto    points_3d_all_2 = TransformPointsFromWorldToCamera(points_3d_all_1, r, t);
 
-    const auto points_cam1_all =
-        ProjectPoints(points_3d_all, k, Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
-    const auto points_cam2_all = ProjectPoints(points_3d_all, k, r, t);
+    const auto points_cam1_all = ProjectPoints(points_3d_all_1, k);
+    const auto points_cam2_all = ProjectPoints(points_3d_all_2, k);
 
     const auto points_cam1_all_normalized = NormalizePoints(points_cam1_all, k);
     const auto points_cam2_all_normalized = NormalizePoints(points_cam2_all, k);
 
     // Randomly pick 5 indices
-    std::vector<int> indices(100);
+    std::vector<int> indices(num_points);
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(), std::mt19937{std::random_device{}()});
     std::vector<int> sample_indices(indices.begin(), indices.begin() + 5);
@@ -58,6 +59,8 @@ int main()
     std::vector<Eigen::Vector2d> points_cam1_sampled, points_cam2_sampled;
     for (int idx : sample_indices)
     {
+        std::cout << points_cam1_all_normalized[idx].transpose() << std::endl;
+        std::cout << points_cam2_all_normalized[idx].transpose() << std::endl << std::endl;
         points_cam1_sampled.push_back(points_cam1_all_normalized[idx]);
         points_cam2_sampled.push_back(points_cam2_all_normalized[idx]);
     }

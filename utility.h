@@ -13,10 +13,9 @@ struct Pose
 // Generates random 3D points in front of the camera.
 std::vector<Eigen::Vector3d> Generate3DPoints(int num_points);
 
-// Projects 3D points into 2D using intrinsic and extrinsic parameters.
+// Projects 3D points into 2D using intrinsic parameters.
 std::vector<Eigen::Vector2d> ProjectPoints(const std::vector<Eigen::Vector3d>& points,
-                                           const Eigen::Matrix3d& k, const Eigen::Matrix3d& r,
-                                           const Eigen::Vector3d& t);
+                                           const Eigen::Matrix3d&              k);
 
 std::vector<Eigen::Vector2d> NormalizePoints(const std::vector<Eigen::Vector2d>& image_points,
                                              const Eigen::Matrix3d&              K);
@@ -30,6 +29,14 @@ Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, 
 
 double PoseError(const Eigen::Matrix3d& R1, const Eigen::Vector3d& t1, const Eigen::Matrix3d& R2,
                  const Eigen::Vector3d& t2);
+
+// Point3d world to Point3d camera
+Eigen::Vector3d TransformPointFromWorldToCamera(const Eigen::Vector3d& world_point,
+                                                const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
+
+std::vector<Eigen::Vector3d> TransformPointsFromWorldToCamera(
+    const std::vector<Eigen::Vector3d>& world_point, const Eigen::Matrix3d& R,
+    const Eigen::Vector3d& t);
 
 Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1, const Eigen::Vector2d& x2);
 
