@@ -7,8 +7,7 @@ namespace minimal_solver
 {
 std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
 FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
-                              const std::vector<Eigen::Vector2d>& points_2,
-                              const Eigen::Matrix3d&              k)
+                              const std::vector<Eigen::Vector2d>& points_2)
 {
     if (points_1.size() != points_2.size())
     {
@@ -20,9 +19,6 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
     {
         throw std::invalid_argument("Need at least 5 point correspondences.");
     }
-
-    const Eigen::Matrix3d k_inv           = k.inverse();
-    const Eigen::Matrix3d k_inv_transpose = k_inv.transpose();
 
     Eigen::Matrix<double, 5, 9> A;
 
@@ -56,36 +52,9 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
                                essential_w(2, 1)};
     const Eigen::Vector4d e_22{essential_x(2, 2), essential_y(2, 2), essential_z(2, 2),
                                essential_w(2, 2)};
-    const Eigen::VectorXd det_essential = P2P1(P1P1(e_01, e_12) - P1P1(e_02, e_11), e_20) +
-        P2P1(P1P1(e_02, e_10) - P1P1(e_00, e_12), e_21) +
-        P2P1(P1P1(e_00, e_11) - P1P1(e_01, e_10), e_22);
-    const Eigen::Matrix3d essential_x_k = k_inv_transpose * essential_matrices_basis.at(0) * k_inv;
-    const Eigen::Matrix3d essential_y_k = k_inv_transpose * essential_matrices_basis.at(1) * k_inv;
-    const Eigen::Matrix3d essential_z_k = k_inv_transpose * essential_matrices_basis.at(2) * k_inv;
-    const Eigen::Matrix3d essential_w_k = k_inv_transpose * essential_matrices_basis.at(3) * k_inv;
-    const Eigen::Vector4d e_00_k{essential_x_k(0, 0), essential_y_k(0, 0), essential_z_k(0, 0),
-                                 essential_w_k(0, 0)};
-    const Eigen::Vector4d e_01_k{essential_x_k(0, 1), essential_y_k(0, 1), essential_z_k(0, 1),
-                                 essential_w_k(0, 1)};
-    const Eigen::Vector4d e_02_k{essential_x_k(0, 2), essential_y_k(0, 2), essential_z_k(0, 2),
-                                 essential_w_k(0, 2)};
-    const Eigen::Vector4d e_10_k{essential_x_k(1, 0), essential_y_k(1, 0), essential_z_k(1, 0),
-                                 essential_w_k(1, 0)};
-    const Eigen::Vector4d e_11_k{essential_x_k(1, 1), essential_y_k(1, 1), essential_z_k(1, 1),
-                                 essential_w_k(1, 1)};
-    const Eigen::Vector4d e_12_k{essential_x_k(1, 2), essential_y_k(1, 2), essential_z_k(1, 2),
-                                 essential_w_k(1, 2)};
-    const Eigen::Vector4d e_20_k{essential_x_k(2, 0), essential_y_k(2, 0), essential_z_k(2, 0),
-                                 essential_w_k(2, 0)};
-    const Eigen::Vector4d e_21_k{essential_x_k(2, 1), essential_y_k(2, 1), essential_z_k(2, 1),
-                                 essential_w_k(2, 1)};
-    const Eigen::Vector4d e_22_k{essential_x_k(2, 2), essential_y_k(2, 2), essential_z_k(2, 2),
-                                 essential_w_k(2, 2)};
-
-    const Eigen::VectorXd det_essential_k =
-        P2P1(P1P1(e_01_k, e_12_k) - P1P1(e_02_k, e_11_k), e_20_k) +
-        P2P1(P1P1(e_02_k, e_10_k) - P1P1(e_00_k, e_12_k), e_21_k) +
-        P2P1(P1P1(e_00_k, e_11_k) - P1P1(e_01_k, e_10_k), e_22_k);
+    const Eigen::VectorXd det_essential = P2P1(P1P1(e_11, e_22) - P1P1(e_21, e_12), e_00) -
+        P2P1(P1P1(e_10, e_22) - P1P1(e_20, e_12), e_01) +
+        P2P1(P1P1(e_10, e_21) - P1P1(e_11, e_20), e_02);
 
     const Eigen::VectorXd ee_t00 = P1P1(e_00, e_00) + P1P1(e_01, e_01) + P1P1(e_02, e_02);
     const Eigen::VectorXd ee_t01 = P1P1(e_00, e_10) + P1P1(e_01, e_11) + P1P1(e_02, e_12);

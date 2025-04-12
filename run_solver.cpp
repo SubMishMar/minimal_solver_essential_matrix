@@ -176,7 +176,7 @@ int main()
     }
 
     const auto [essential_matrices, rotation_matrices, translation_vectors] =
-        minimal_solver::FindEssentialMatMinimalSolver(points_cam1_sampled, points_cam2_sampled, k);
+        minimal_solver::FindEssentialMatMinimalSolver(points_cam1_sampled, points_cam2_sampled);
 
     double min_sampson = std::numeric_limits<double>::max();
     int    best_index  = -1;
