@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 
+// Implementation inspired from - https://github.com/SergioRAgostinho/five_point_algorithm
 namespace minimal_solver
 {
 std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
