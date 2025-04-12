@@ -4,12 +4,8 @@ This project demonstrates a synthetic setup for estimating the **essential matri
 
 ## Features
 
-- Synthetic generation of random 3D points in front of the camera.
-- Projection of 3D points into two camera views.
-- Normalization of image coordinates using intrinsic camera matrix.
 - Estimation of essential matrix using 5-point correspondences.
-- Selection of the best essential matrix based on Sampson error.
-- Evaluation of estimated pose against ground truth.
+- Selection of the best essential matrix based on Sampson error over all point correspondences.
 
 ## Dependencies
 
@@ -44,8 +40,9 @@ The program prints:
 ## File Overview
 
 - `main.cpp`: Main pipeline for generating data, running the solver, and evaluating results.
-- `utility.h/cpp`: Helper functions for projection, normalization, and error computation.
+- `utility.h/cpp`: Helper functions for projection, normalization, nullspace computation, RREF with partial pivoting, and error computation.
 - `minimal_solver.h/cpp`: Implementation of the 5-point essential matrix solver.
 
 ## Credits
-More than the paper, the OCTAVE implementation here - (https://github.com/SergioRAgostinho/five_point_algorithm) - helped me understand the theory better. The cpp code presented here is inspired from the OCTAVE implementation. And, of course, GPT 😊 
+- More than the paper, the OCTAVE implementation here - (https://github.com/SergioRAgostinho/five_point_algorithm) - helped me understand the theory better. The cpp code presented here is inspired from the OCTAVE implementation. 
+- And, of course, GPT 😊 
