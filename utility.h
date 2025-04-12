@@ -4,6 +4,33 @@
 #include <tuple>
 #include <vector>
 
+struct Pose
+{
+    Eigen::Matrix3d rotation;
+    Eigen::Vector3d translation;
+};
+
+// Generates random 3D points in front of the camera.
+std::vector<Eigen::Vector3d> Generate3DPoints(int num_points);
+
+// Projects 3D points into 2D using intrinsic and extrinsic parameters.
+std::vector<Eigen::Vector2d> ProjectPoints(const std::vector<Eigen::Vector3d>& points,
+                                           const Eigen::Matrix3d& k, const Eigen::Matrix3d& r,
+                                           const Eigen::Vector3d& t);
+
+std::vector<Eigen::Vector2d> NormalizePoints(const std::vector<Eigen::Vector2d>& image_points,
+                                             const Eigen::Matrix3d&              K);
+
+// Convert degrees to radians
+double deg2rad(double degrees);
+
+// Generate pose with rotations around X, Y, Z and translation tx, ty, tz
+Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, double ty,
+                  double tz);
+
+double PoseError(const Eigen::Matrix3d& R1, const Eigen::Vector3d& t1, const Eigen::Matrix3d& R2,
+                 const Eigen::Vector3d& t2);
+
 Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1, const Eigen::Vector2d& x2);
 
 std::vector<Eigen::Matrix3d> ComputeNullspaceEssentialCandidates(
