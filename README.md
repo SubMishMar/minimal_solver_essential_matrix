@@ -1,6 +1,6 @@
 # Minimal Essential Matrix Solver
 
-This project demonstrates a synthetic setup for estimating the **essential matrix** and the **relative camera pose** (rotation and translation) using a **minimal 5-point algorithm** based on [Nister's paper] (https://ieeexplore.ieee.org/document/1288525).
+This project demonstrates a synthetic setup for estimating the **essential matrix** and the **relative camera pose** (rotation and translation) using a **minimal 5-point algorithm** based on  ["An Efficient Solution to the Five-Point Relative Pose Problem"](https://ieeexplore.ieee.org/document/1288525).
 
 ## Features
 
@@ -48,4 +48,4 @@ The program prints:
 - `minimal_solver.h/cpp`: Implementation of the 5-point essential matrix solver.
 
 ## Credits
-More than the paper, the OCTAVE implementation here - - helped me understand the theory better. The cpp code presented here is inspired from the OCTAVE implementation. And, of course, GPT 😊 
+More than the paper, the OCTAVE implementation here - (https://github.com/SergioRAgostinho/five_point_algorithm) - helped me understand the theory better. The cpp code presented here is inspired from the OCTAVE implementation. And, of course, GPT 😊 
