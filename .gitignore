@@ -1,0 +1,33 @@
+# Ignore build directory
+/build/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled object files and binaries
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.out
+*.a
+*.lib
+
+# Backup & temporary files
+*~
+*.swp
+*.tmp
+
+# VS Code settings
+.vscode/
+
+# Mac-specific
+.DS_Store
+
+# Python cache (if you mix in python scripts)
+__pycache__/
+*.pyc

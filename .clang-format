@@ -1,0 +1,46 @@
+BasedOnStyle: Google
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+ColumnLimit: 100
+AllowShortIfStatementsOnASingleLine: false
+BreakBeforeBraces: Allman
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# Makes Eigen expressions more readable
+AlignOperands: false
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AllowAllConstructorInitializersOnNextLine: true
+
+# Handle Eigen matrix types and OpenCV types cleanly
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: false
+AlwaysBreakTemplateDeclarations: Yes
+
+# Improves readability for initializer lists and lambdas
+Cpp11BracedListStyle: true
+AllowShortFunctionsOnASingleLine: Empty
+
+# Keep include order clean
+IncludeBlocks: Regroup
+SortIncludes: true
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+    SortPriority:    0
+  - Regex:           '^"Eigen/.*'
+    Priority:        2
+    SortPriority:    1
+  - Regex:           '^<opencv2/.*'
+    Priority:        3
+    SortPriority:    2
+  - Regex:           '^".*'
+    Priority:        4
+    SortPriority:    3
+
+# Extra safety for lambdas and default args
+SpacesBeforeTrailingComments: 1
+ReflowComments: true

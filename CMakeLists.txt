@@ -1,18 +1,33 @@
 cmake_minimum_required(VERSION 3.10)
-project(minimal_solver)
+project(minimal_solver_project)
 
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Find packages
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Armadillo REQUIRED)
 
-# Add your executable
-add_executable(test test.cpp)
-add_executable(unit_test unit_tests.cpp)
+# Define the executable
+add_executable(run_solver
+    run_solver.cpp
+    minimal_solver.cpp
+    utility.cpp
+)
 
-# Link Eigen
-target_link_libraries(test Eigen3::Eigen ${OpenCV_LIBS} armadillo)
-target_link_libraries(unit_test Eigen3::Eigen ${OpenCV_LIBS} armadillo)
+# Include current directory for headers
+target_include_directories(run_solver
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${EIGEN3_INCLUDE_DIR}
+    ${OpenCV_INCLUDE_DIRS}
+    ${ARMADILLO_INCLUDE_DIRS}
+)
+
+# Link against the libraries
+target_link_libraries(run_solver
+    PRIVATE
+    Eigen3::Eigen
+    ${OpenCV_LIBS}
+    ${ARMADILLO_LIBRARIES}
+)
