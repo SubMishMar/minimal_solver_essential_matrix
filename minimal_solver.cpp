@@ -1,11 +1,14 @@
 #include "minimal_solver.h"
 
 #include "utility.h"
+
+#include <iostream>
 namespace minimal_solver
 {
-cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
-                                      const std::vector<Eigen::Vector2d>& points_2,
-                                      const Eigen::Matrix3d&              k)
+std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
+FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
+                              const std::vector<Eigen::Vector2d>& points_2,
+                              const Eigen::Matrix3d&              k)
 {
     if (points_1.size() != points_2.size())
     {
@@ -171,27 +174,12 @@ cv::Mat FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points
         std::cerr << "Warning: n_row(0) is too close to zero. Skipping normalization.\n";
         n_row_scaled = n_row; // or set to zero, or handle differently
     }
-    std::cout << "n_row_scaled: \n" << n_row_scaled << std::endl;
     std::vector<std::complex<double>> all_roots = ComputeRootsFromPolynomial(n_row_scaled);
     Eigen::Vector3d                   q_1;
     q_1 << points_1[0].x(), points_1[0].y(), 1.0;
     Eigen::Vector3d q_2;
     q_2 << points_2[0].x(), points_2[0].y(), 1.0;
-    auto [essential_matrices, rotation_matrices, translation_vectors] =
-        EssentialMatricesFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y,
+    return EstimateMotionFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y,
                                           essential_z, essential_w, q_1, q_2);
-    for (const auto& essential_matrix : essential_matrices)
-    {
-        std::cout << "E: \n" << essential_matrix << std::endl;
-    }
-    for (const auto& rotation_matrix : rotation_matrices)
-    {
-        std::cout << "R: \n" << rotation_matrix << std::endl;
-    }
-    for (const auto& translation_vector : translation_vectors)
-    {
-        std::cout << "t: \n" << translation_vector.transpose() << std::endl;
-    }
-    return cv::Mat();
 }
 } // namespace minimal_solver

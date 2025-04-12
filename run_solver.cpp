@@ -1,35 +1,21 @@
-#include <opencv2/opencv.hpp>
-
 #include "minimal_solver.h"
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
-#include <Eigen/SVD>
-#include <armadillo>
 #include <cmath>
 #include <iostream>
-#include <limits>
 #include <random>
-#include <stdexcept>
 #include <tuple>
 #include <vector>
 
-using cv::Mat;
-using cv::Mat_;
-using cv::Point2d;
-using cv::Point3d;
-using std::cout;
-using std::endl;
-using std::vector;
-
 // Generates random 3D points in front of the camera.
-vector<Point3d> Generate3DPoints(int num_points)
+std::vector<Eigen::Vector3d> Generate3DPoints(int num_points)
 {
     std::random_device               rd;
     std::mt19937                     gen(rd());
     std::uniform_real_distribution<> dis(-1.0, 1.0);
 
-    vector<Point3d> points;
+    std::vector<Eigen::Vector3d> points;
     points.reserve(num_points);
 
     for (int i = 0; i < num_points; ++i)
@@ -43,22 +29,22 @@ vector<Point3d> Generate3DPoints(int num_points)
 }
 
 // Projects 3D points into 2D using intrinsic and extrinsic parameters.
-std::vector<Eigen::Vector2d> ProjectPoints(const vector<Point3d>& points, const Mat& k,
-                                           const Mat& r, const Mat& t)
+std::vector<Eigen::Vector2d> ProjectPoints(const std::vector<Eigen::Vector3d>& points,
+                                           const Eigen::Matrix3d& k, const Eigen::Matrix3d& r,
+                                           const Eigen::Vector3d& t)
 {
     std::vector<Eigen::Vector2d> image_points;
     image_points.reserve(points.size());
 
     for (const auto& point : points)
     {
-        Mat x     = (Mat_<double>(3, 1) << point.x, point.y, point.z);
-        Mat x_cam = r * x + t;
-        Mat x_img = k * x_cam;
+        Eigen::Vector3d x_cam = r * point + t;
+        Eigen::Vector3d x_img = k * x_cam;
 
-        double u = x_img.at<double>(0, 0) / x_img.at<double>(2, 0);
-        double v = x_img.at<double>(1, 0) / x_img.at<double>(2, 0);
+        double u = x_img.x() / x_img.z();
+        double v = x_img.y() / x_img.z();
 
-        image_points.emplace_back(Eigen::Vector2d(u, v));
+        image_points.emplace_back(u, v);
     }
 
     return image_points;
@@ -81,34 +67,77 @@ std::vector<Eigen::Vector2d> NormalizePoints(const std::vector<Eigen::Vector2d>&
     return normalized;
 }
 
-Eigen::Matrix3d cvToEigen3x3(const cv::Mat& mat)
+struct Pose
 {
-    assert(mat.rows == 3 && mat.cols == 3 && mat.type() == CV_64F);
-    Eigen::Matrix3d m;
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) m(i, j) = mat.at<double>(i, j);
-    return m;
+    Eigen::Matrix3d rotation;
+    Eigen::Vector3d translation;
+};
+
+// Convert degrees to radians
+inline double deg2rad(double degrees)
+{
+    return degrees * M_PI / 180.0;
+}
+
+// Generate pose with rotations around X, Y, Z and translation tx, ty, tz
+Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, double ty,
+                  double tz)
+{
+    double roll  = deg2rad(roll_deg);  // rotation around X
+    double pitch = deg2rad(pitch_deg); // rotation around Y
+    double yaw   = deg2rad(yaw_deg);   // rotation around Z
+
+    // Rotation matrices around each axis
+    Eigen::Matrix3d Rx;
+    Rx << 1, 0, 0, 0, cos(roll), -sin(roll), 0, sin(roll), cos(roll);
+
+    Eigen::Matrix3d Ry;
+    Ry << cos(pitch), 0, sin(pitch), 0, 1, 0, -sin(pitch), 0, cos(pitch);
+
+    Eigen::Matrix3d Rz;
+    Rz << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1;
+
+    // Combined rotation: R = Rz * Ry * Rx
+    Eigen::Matrix3d R = Rz * Ry * Rx;
+    Eigen::Vector3d t(tx, ty, tz);
+
+    return {R, t};
 }
 
 int main()
 {
-    const Mat k = (Mat_<double>(3, 3) << 800, 0, 320, 0, 800, 240, 0, 0, 1);
+    Eigen::Matrix3d k;
+    k << 800, 0, 320, 0, 800, 240, 0, 0, 1;
 
-    const Eigen::Matrix3d k_eig = cvToEigen3x3(k);
+    auto pose = GeneratePose(-5.0, 5.0, 10.0, 0.1, -0.1, -0.5);
 
-    const double theta = 10 * CV_PI / 180.0;
-    const Mat    r =
-        (Mat_<double>(3, 3) << cos(theta), -sin(theta), 0, sin(theta), cos(theta), 0, 0, 0, 1);
-    const Mat  t         = (Mat_<double>(3, 1) << 0.1, 0, 0);
+    Eigen::Matrix3d r = pose.rotation;
+    Eigen::Vector3d t = pose.translation;
+
     const auto points_3d = Generate3DPoints(5);
     const auto points_cam1 =
-        ProjectPoints(points_3d, k, Mat::eye(3, 3, CV_64F), Mat::zeros(3, 1, CV_64F));
-    const auto points_cam1_normalized = NormalizePoints(points_cam1, k_eig);
+        ProjectPoints(points_3d, k, Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
+    const auto points_cam1_normalized = NormalizePoints(points_cam1, k);
     const auto points_cam2            = ProjectPoints(points_3d, k, r, t);
-    const auto points_cam2_normalized = NormalizePoints(points_cam2, k_eig);
+    const auto points_cam2_normalized = NormalizePoints(points_cam2, k);
 
-    minimal_solver::FindEssentialMatMinimalSolver(points_cam1_normalized, points_cam2_normalized,
-                                                  k_eig);
+    const auto [essential_matrices, rotation_matrices, translation_vectors] =
+        minimal_solver::FindEssentialMatMinimalSolver(points_cam1_normalized,
+                                                      points_cam2_normalized, k);
 
+    for (const auto essential_matrix : essential_matrices)
+    {
+        std::cout << "E: \n" << essential_matrix << std::endl;
+    }
+
+    for (const auto rotation_matrix : rotation_matrices)
+    {
+        std::cout << "R: \n" << rotation_matrix << std::endl;
+    }
+
+    for (const auto translation_vector : translation_vectors)
+    {
+        std::cout << "t: \t" << translation_vector.transpose() << std::endl;
+    }
     return 0;
 }

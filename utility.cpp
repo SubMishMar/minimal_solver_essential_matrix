@@ -1,5 +1,9 @@
 #include "utility.h"
 
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <armadillo>
+
 Eigen::RowVectorXd EpipolarConstraintRow(const Eigen::Vector2d& x1, const Eigen::Vector2d& x2)
 {
     double u1 = x1(0);
@@ -279,13 +283,13 @@ bool IsReal(const std::complex<double>& c, double tol = 1e-12)
 }
 
 std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
-EssentialMatricesFromComplexRoots(const std::vector<std::complex<double>>& roots,
-                                  const Eigen::RowVectorXd& p_1, const Eigen::RowVectorXd& p_2,
-                                  const Eigen::RowVectorXd& p_3, const Eigen::Matrix3d& essential_x,
-                                  const Eigen::Matrix3d& essential_y,
-                                  const Eigen::Matrix3d& essential_z,
-                                  const Eigen::Matrix3d& essential_w, const Eigen::Vector3d& q_1,
-                                  const Eigen::Vector3d& q_2)
+EstimateMotionFromComplexRoots(const std::vector<std::complex<double>>& roots,
+                               const Eigen::RowVectorXd& p_1, const Eigen::RowVectorXd& p_2,
+                               const Eigen::RowVectorXd& p_3, const Eigen::Matrix3d& essential_x,
+                               const Eigen::Matrix3d& essential_y,
+                               const Eigen::Matrix3d& essential_z,
+                               const Eigen::Matrix3d& essential_w, const Eigen::Vector3d& q_1,
+                               const Eigen::Vector3d& q_2)
 {
     if (p_1.size() != 8)
     {
