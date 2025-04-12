@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Find packages
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
 find_package(Armadillo REQUIRED)
 
 # Define the executable
@@ -20,7 +19,6 @@ target_include_directories(run_solver
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${EIGEN3_INCLUDE_DIR}
-    ${OpenCV_INCLUDE_DIRS}
     ${ARMADILLO_INCLUDE_DIRS}
 )
 
@@ -28,6 +26,5 @@ target_include_directories(run_solver
 target_link_libraries(run_solver
     PRIVATE
     Eigen3::Eigen
-    ${OpenCV_LIBS}
     ${ARMADILLO_LIBRARIES}
 )

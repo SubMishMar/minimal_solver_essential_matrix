@@ -56,7 +56,9 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
                                essential_w(2, 1)};
     const Eigen::Vector4d e_22{essential_x(2, 2), essential_y(2, 2), essential_z(2, 2),
                                essential_w(2, 2)};
-
+    const Eigen::VectorXd det_essential = P2P1(P1P1(e_01, e_12) - P1P1(e_02, e_11), e_20) +
+        P2P1(P1P1(e_02, e_10) - P1P1(e_00, e_12), e_21) +
+        P2P1(P1P1(e_00, e_11) - P1P1(e_01, e_10), e_22);
     const Eigen::Matrix3d essential_x_k = k_inv_transpose * essential_matrices_basis.at(0) * k_inv;
     const Eigen::Matrix3d essential_y_k = k_inv_transpose * essential_matrices_basis.at(1) * k_inv;
     const Eigen::Matrix3d essential_z_k = k_inv_transpose * essential_matrices_basis.at(2) * k_inv;
@@ -116,7 +118,7 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
     const Eigen::VectorXd ae_22 = P2P1(a_20, e_02) + P2P1(a_21, e_12) + P2P1(a_22, e_22);
 
     Eigen::MatrixXd a(10, 20);
-    a.row(0) = det_essential_k;
+    a.row(0) = det_essential;
     a.row(1) = ae_00;
     a.row(2) = ae_01;
     a.row(3) = ae_02;
