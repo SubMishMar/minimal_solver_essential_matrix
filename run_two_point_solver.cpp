@@ -1,3 +1,4 @@
+#include "minimal_solver.h"
 #include "utility.h"
 
 #include <iostream>
@@ -48,4 +49,17 @@ int main()
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(), std::mt19937{std::random_device{}()});
     std::vector<int> sample_indices(indices.begin(), indices.begin() + 2);
+
+    std::vector<Eigen::Vector2d> points_cam1_sampled, points_cam2_sampled;
+    for (int idx : sample_indices)
+    {
+        points_cam1_sampled.push_back(points_cam1_all_normalized[idx]);
+        points_cam2_sampled.push_back(points_cam2_all_normalized[idx]);
+    }
+
+    const Eigen::Vector3d t_est = minimal_solver::EstimateRelativeTranslationWithKnownRotation(
+        r, points_cam1_sampled, points_cam2_sampled);
+    std::cout << "t (estimated) = \t" << t_est.transpose() << std::endl;
+
+    std::cout << "Pose error: " << PoseError(r, t, r, t_est) << std::endl;
 }

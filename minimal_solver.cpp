@@ -2,6 +2,7 @@
 
 #include "utility.h"
 
+#include <Eigen/SVD>
 #include <iostream>
 namespace minimal_solver
 {
@@ -15,9 +16,9 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
     }
 
     const int num_points = static_cast<int>(points_1.size());
-    if (num_points < 5)
+    if (num_points != 5)
     {
-        throw std::invalid_argument("Need at least 5 point correspondences.");
+        throw std::invalid_argument("Need 5 point correspondences.");
     }
 
     Eigen::Matrix<double, 5, 9> A;
@@ -152,5 +153,42 @@ FindEssentialMatMinimalSolver(const std::vector<Eigen::Vector2d>& points_1,
     q_2 << points_2[0].x(), points_2[0].y(), 1.0;
     return EstimateMotionFromComplexRoots(all_roots, p_1, p_2, p_3, essential_x, essential_y,
                                           essential_z, essential_w, q_1, q_2);
+}
+
+Eigen::Vector3d EstimateRelativeTranslationWithKnownRotation(
+    const Eigen::Matrix3d& r, const std::vector<Eigen::Vector2d>& points_1,
+    const std::vector<Eigen::Vector2d>& points_2)
+{
+    if (points_1.size() != points_2.size())
+    {
+        throw std::invalid_argument("Point vectors must be of the same size.");
+    }
+
+    const int num_points = static_cast<int>(points_1.size());
+    if (num_points != 2)
+    {
+        throw std::invalid_argument("Need 2 point correspondences.");
+    }
+
+    Eigen::MatrixXd A(num_points, 3);
+    for (size_t i = 0; i < points_1.size(); ++i)
+    {
+        Eigen::Vector2d point_1         = points_1[i];
+        Eigen::Vector3d point_1_rotated = r * Eigen::Vector3d{point_1.x(), point_1.y(), 1.0};
+
+        const double x1 = point_1_rotated.x();
+        const double y1 = point_1_rotated.y();
+        const double z1 = point_1_rotated.z();
+        const double x2 = points_2[i].x();
+        const double y2 = points_2[i].y();
+
+        A.row(i) << y1 - z1 * y2, z1 * x2 - x1, x1 * y2 - y1 * x2;
+    }
+
+    // Solve for t (up to scale)
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeFullV);
+    Eigen::Vector3d                   t = svd.matrixV().col(2);
+
+    return t.normalized(); // return normalized translation
 }
 } // namespace minimal_solver
