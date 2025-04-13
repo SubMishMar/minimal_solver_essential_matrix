@@ -64,6 +64,15 @@ double deg2rad(double degrees)
     return degrees * M_PI / 180.0;
 }
 
+Eigen::Matrix3d CreateEssentialMatrix(const Eigen::Matrix3d& R, const Eigen::Vector3d& t)
+{
+    // Create the skew-symmetric matrix [t]_x
+    Eigen::Matrix3d t_skew;
+    t_skew << 0, -t(2), t(1), t(2), 0, -t(0), -t(1), t(0), 0;
+
+    return t_skew * R;
+}
+
 Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, double ty,
                   double tz)
 {
@@ -428,6 +437,39 @@ double ComputeEpipolarConstraint(const std::vector<Eigen::Vector2d>& points_1,
 
     return sum;
 }
+
+bool HasPositiveDepthInBothViews(const Eigen::Matrix3d& essential_matrix,
+                                 const Eigen::Vector3d& q_1, const Eigen::Vector3d& q_2,
+                                 const Eigen::Matrix3d& r, const Eigen::Vector3d& t)
+{
+    const Eigen::Vector3d a = essential_matrix.transpose() * q_2;
+    const Eigen::Vector3d b = q_1.cross(Eigen::Vector3d(a.x(), a.y(), 0.0));
+    Eigen::Matrix3d       diagonal_mat_temp;
+    diagonal_mat_temp << 1, 0, 0, 0, 1, 0, 0, 0, 0;
+    const Eigen::Vector3d c = q_2.cross(diagonal_mat_temp * essential_matrix * q_1);
+    const Eigen::Vector3d d = a.cross(b);
+
+    Eigen::Matrix<double, 3, 4> P;
+    P << r, t;
+    Eigen::Vector4d C = P.transpose() * c;
+    Eigen::Vector4d Q;
+    Q.head<3>() = d * C(3);
+    Q(3)        = -d.dot(C.head<3>());
+
+    if (Q(2) * Q(3) < 0.0)
+    {
+        return false;
+    }
+
+    Eigen::Vector3d c_2 = P * Q;
+    if (c_2(2) * Q(3) < 0.0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 std::tuple<std::vector<Eigen::Matrix3d>, std::vector<Eigen::Matrix3d>, std::vector<Eigen::Vector3d>>
 EstimateMotionFromComplexRoots(const std::vector<std::complex<double>>& roots,
                                const Eigen::RowVectorXd& p_1, const Eigen::RowVectorXd& p_2,
@@ -514,30 +556,12 @@ EstimateMotionFromComplexRoots(const std::vector<std::complex<double>>& roots,
                     R = U * D.transpose() * V.transpose();
                     break;
             }
-            const Eigen::Vector3d a = essential_matrix.transpose() * q_2;
-            const Eigen::Vector3d b = q_1.cross(Eigen::Vector3d(a.x(), a.y(), 0.0));
-            Eigen::Matrix3d       diagonal_mat_temp;
-            diagonal_mat_temp << 1, 0, 0, 0, 1, 0, 0, 0, 0;
-            const Eigen::Vector3d c = q_2.cross(diagonal_mat_temp * essential_matrix * q_1);
-            const Eigen::Vector3d d = a.cross(b);
 
-            Eigen::Matrix<double, 3, 4> P;
-            P << R, t;
-            Eigen::Vector4d C = P.transpose() * c;
-            Eigen::Vector4d Q;
-            Q.head<3>() = d * C(3);
-            Q(3)        = -d.dot(C.head<3>());
-
-            if (Q(2) * Q(3) < 0.0)
+            if (!HasPositiveDepthInBothViews(essential_matrix, q_1, q_2, R, t))
             {
                 continue;
             }
 
-            Eigen::Vector3d c_2 = P * Q;
-            if (c_2(2) * Q(3) < 0.0)
-            {
-                continue;
-            }
             rotation_matrices.emplace_back(R);
             translation_vectors.emplace_back(t);
             break;

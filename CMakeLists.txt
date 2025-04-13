@@ -14,8 +14,9 @@ add_executable(run_solver
     utility.cpp
 )
 
-add_executable(run_two_view_solver
-    run_two_view_solver.cpp
+add_executable(run_two_point_solver
+    run_two_point_solver.cpp
+    minimal_solver.cpp
     utility.cpp
 )
 
@@ -27,7 +28,7 @@ target_include_directories(run_solver
     ${ARMADILLO_INCLUDE_DIRS}
 )
 
-target_include_directories(run_two_view_solver
+target_include_directories(run_two_point_solver
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${EIGEN3_INCLUDE_DIR}
@@ -40,7 +41,7 @@ target_link_libraries(run_solver
     Eigen3::Eigen
     ${ARMADILLO_LIBRARIES}
 )
-target_link_libraries(run_two_view_solver
+target_link_libraries(run_two_point_solver
     PRIVATE
     Eigen3::Eigen
     ${ARMADILLO_LIBRARIES}

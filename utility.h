@@ -23,6 +23,9 @@ std::vector<Eigen::Vector2d> NormalizePoints(const std::vector<Eigen::Vector2d>&
 // Convert degrees to radians
 double deg2rad(double degrees);
 
+// Constructs the Essential Matrix from relative rotation and translation.
+Eigen::Matrix3d CreateEssentialMatrix(const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
+
 // Generate pose with rotations around X, Y, Z and translation tx, ty, tz
 Pose GeneratePose(double roll_deg, double pitch_deg, double yaw_deg, double tx, double ty,
                   double tz);
@@ -100,3 +103,8 @@ double ComputeEpipolarConstraint(const Eigen::Vector2d& point_1, const Eigen::Ve
 double ComputeEpipolarConstraint(const std::vector<Eigen::Vector2d>& point_1,
                                  const std::vector<Eigen::Vector2d>& point_2,
                                  const Eigen::Matrix3d&              essential_matrix);
+
+// Checks if the triangulated 3D point from a pair of normalized image points
+bool HasPositiveDepthInBothViews(const Eigen::Matrix3d& essential_matrix,
+                                 const Eigen::Vector3d& q_1, const Eigen::Vector3d& q_2,
+                                 const Eigen::Matrix3d& r, const Eigen::Vector3d& t);

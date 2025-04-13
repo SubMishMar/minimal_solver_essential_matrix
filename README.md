@@ -23,12 +23,17 @@ cmake ..
 make
 ```
 
-## Running
+## Running 5 point solver
 
 ```bash
 ./run_solver
 ```
 
+## Running 2 point solver (with known rotation)
+
+```bash
+./run_two_point_solver
+```
 ## Output
 
 The program prints:
