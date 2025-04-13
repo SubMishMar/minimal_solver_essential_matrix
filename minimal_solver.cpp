@@ -189,6 +189,15 @@ Eigen::Vector3d EstimateRelativeTranslationWithKnownRotation(
     Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeFullV);
     Eigen::Vector3d                   t = svd.matrixV().col(2);
 
+    const Eigen::Matrix3d essential_matrix = CreateEssentialMatrix(r, t);
+    Eigen::Vector3d       q_1;
+    q_1 << points_1[0].x(), points_1[0].y(), 1.0;
+    Eigen::Vector3d q_2;
+    q_2 << points_2[0].x(), points_2[0].y(), 1.0;
+    if (!HasPositiveDepthInBothViews(essential_matrix, q_1, q_2, r, t))
+    {
+        t = -t;
+    }
     return t.normalized(); // return normalized translation
 }
 } // namespace minimal_solver

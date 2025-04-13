@@ -59,6 +59,7 @@ int main()
 
     const Eigen::Vector3d t_est = minimal_solver::EstimateRelativeTranslationWithKnownRotation(
         r, points_cam1_sampled, points_cam2_sampled);
+
     std::cout << "t (estimated) = \t" << t_est.transpose() << std::endl;
 
     std::cout << "Pose error: " << PoseError(r, t, r, t_est) << std::endl;
